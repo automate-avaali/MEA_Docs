@@ -9,7 +9,11 @@ export type ChatMsg = { role: "system" | "user" | "assistant"; content: string }
 
 const base = () => (process.env.FANAR_BASE_URL || "https://api.fanar.qa/v1").replace(/\/$/, "");
 
-export async function streamChat(messages: ChatMsg[], opts: { maxTokens?: number; signal?: AbortSignal } = {}) {
+/** `state.finishReason` is "length" when the answer hit max_tokens — the caller then asks it to continue. */
+export type StreamState = { finishReason: string | null };
+
+export async function streamChat(messages: ChatMsg[], opts: { maxTokens?: number; signal?: AbortSignal; state?: StreamState } = {}) {
+  const state = opts.state ?? { finishReason: null };
   const res = await fetch(`${base()}/chat/completions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${process.env.FANAR_API_KEY}`, "Content-Type": "application/json" },
@@ -18,9 +22,10 @@ export async function streamChat(messages: ChatMsg[], opts: { maxTokens?: number
       messages,
       stream: true,
       temperature: 0.1,
-      max_tokens: opts.maxTokens ?? 900,
+      // Long enough for full multi-document tables; anything longer is continued automatically (see answer.ts).
+      max_tokens: opts.maxTokens ?? 4000,
     }),
-    signal: opts.signal ?? AbortSignal.timeout(90_000),
+    signal: opts.signal ?? AbortSignal.timeout(240_000),
   });
   if (!res.ok || !res.body) {
     const t = await res.text().catch(() => "");
@@ -44,7 +49,9 @@ export async function streamChat(messages: ChatMsg[], opts: { maxTokens?: number
         try {
           const j = JSON.parse(payload);
           if (j.error) throw new Error(j.error.message ?? "llm stream error");
-          const d = j.choices?.[0]?.delta?.content;
+          const choice = j.choices?.[0];
+          if (choice?.finish_reason) state.finishReason = choice.finish_reason;
+          const d = choice?.delta?.content;
           if (d) yield d as string;
         } catch (e) {
           if (e instanceof SyntaxError) continue;

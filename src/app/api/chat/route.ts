@@ -6,7 +6,7 @@ import { answer, NOT_FOUND, retrievalQueries } from "@/lib/rag/answer";
 import { retrieve } from "@/lib/rag/retrieve";
 import { detectLang, type Lang } from "@/lib/text/arabic";
 
-export const maxDuration = 120;
+export const maxDuration = 300; // long table answers can take Fanar ~1 min (+ automatic continuation)
 
 // Streams NDJSON events so the UI can show progress immediately:
 //   {t:"meta"} → {t:"sources"} (right after retrieval, before the LLM starts) → {t:"delta"}… → {t:"verify"} → {t:"done"}

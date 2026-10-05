@@ -1,5 +1,6 @@
 import "server-only";
-import { streamChat, type ChatMsg } from "../ai/fanar";
+import { streamChat, type ChatMsg, type StreamState } from "../ai/fanar";
+import { normalizeTables } from "../text/tables";
 import { detectLang, type Lang } from "../text/arabic";
 import { verifyAnswer } from "../text/verify";
 import type { Hit } from "./retrieve";
@@ -20,14 +21,16 @@ Rules:
 3. Copy names, numbers, amounts, dates, IDs and product codes EXACTLY as they appear in the sources. Never invent or convert dates.
 4. Put the source number in square brackets after each fact, like [1] or [2][3]. Cite at most 3 sources per fact — the most relevant ones. Only use numbers of sources that exist.
    Several sources may come from different documents with the same template; when they agree, say so once instead of listing each.
-5. Lead with the direct answer, then short supporting details. Use a bullet list or a Markdown table when comparing several items.`;
+5. Lead with the direct answer, then short supporting details. Use a bullet list or a Markdown table when comparing several items.
+6. Markdown tables: one header row, then a separator row (| --- | --- |), then EACH data row on its own line. Every row must have the same number of columns as the header. Keep each value in its own column (for example Volume and Off-Invoice are separate columns). When comparing several documents, add a "Document" column instead of writing a new table per document.
+7. Never stop early or summarise with "etc." — when asked for a full list or table, include every row from the sources.`;
 }
 
 export function formatSources(hits: Hit[]) {
   return hits
     .map((h, i) => {
       const pages = h.pageEnd && h.pageEnd !== h.page ? `pages ${h.page}-${h.pageEnd}` : `page ${h.page}`;
-      return `[${i + 1}] ${h.docTitle} — ${pages}${h.section ? ` — ${h.section}` : ""}\n${h.content}`;
+      return `[${i + 1}] ${h.docTitle} — ${pages}${h.section ? ` — ${h.section}` : ""}\n${normalizeTables(h.content)}`;
     })
     .join("\n\n");
 }
@@ -68,13 +71,14 @@ export async function* answer(opts: { question: string; lang: Lang; hits: Hit[];
   let text = "";
   let firstTokenMs = 0;
   let retried = false;
+  const state: StreamState = { finishReason: null };
   for (let attempt = 0; attempt < 2; attempt++) {
     const ctrl = new AbortController();
     const messages =
       attempt === 0
         ? base
         : [...base.slice(0, -1), { role: "user" as const, content: `${base[base.length - 1].content}\n\nRespond ONLY in ${LANG_NAME[opts.lang]}.` }];
-    const stream = await streamChat(messages, { signal: AbortSignal.any([ctrl.signal, AbortSignal.timeout(90_000)]) });
+    const stream = await streamChat(messages, { state, signal: AbortSignal.any([ctrl.signal, AbortSignal.timeout(240_000)]) });
     let held = "";
     let released = false;
     let wrongLanguage = false;
@@ -104,6 +108,23 @@ export async function* answer(opts: { question: string; lang: Lang; hits: Hit[];
     }
     if (!released && held) yield { t: "delta", d: held };
     break;
+  }
+
+  // Never truncate: if the model stopped at the token limit, ask it to carry on from the exact point.
+  for (let more = 0; more < 2 && state.finishReason === "length"; more++) {
+    state.finishReason = null;
+    const cont = await streamChat(
+      [...base, { role: "assistant", content: text }, { role: "user", content: "Continue exactly where you stopped. Do not repeat anything already written. If you stopped inside a table, continue with the next table row (no new header)." }],
+      { state, signal: AbortSignal.timeout(240_000) },
+    );
+    const glue = text.endsWith("\n") ? "" : "\n";
+    let first = true;
+    for await (const d of cont) {
+      const piece = first ? glue + d.replace(/^\s+/, "") : d;
+      first = false;
+      text += piece;
+      yield { t: "delta", d: piece };
+    }
   }
 
   const { issues } = verifyAnswer({ question: opts.question, answer: text, context, sourceCount: opts.hits.length, expectedLang: opts.lang });

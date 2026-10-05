@@ -6,6 +6,7 @@ import { CHUNKS, DocumentModel, type DocumentDoc } from "../models";
 import { ocrPdf } from "../ai/gemini-ocr";
 import { embedMany } from "../ai/embed";
 import { cleanText, detectContentLang, searchNormalize } from "../text/arabic";
+import { normalizeTables } from "../text/tables";
 import { extractDates, invalidIbans } from "../text/verify";
 import { chunkPages, embeddingText, type PageText } from "./chunk";
 import { replacePageChunks, toVector, type ChunkRow } from "./store";
@@ -45,7 +46,7 @@ export async function processBatch(opts: {
 }) {
   const { doc } = opts;
   const t0 = Date.now();
-  const texts: (PageText & { source: string })[] = (opts.pages ?? []).map((p) => ({ page: p.page, text: cleanText(p.text), source: p.source }));
+  const texts: (PageText & { source: string })[] = (opts.pages ?? []).map((p) => ({ page: p.page, text: normalizeTables(cleanText(p.text)), source: p.source }));
   const flagged: number[] = [];
 
   if (opts.pdf && opts.pdfPages?.length) {
@@ -70,7 +71,7 @@ export async function processBatch(opts: {
       }
       if (!text) flagged.push(page);
       if (invalidIbans(text).length) flagged.push(page);
-      texts.push({ page, text, source: "gemini" });
+      texts.push({ page, text: normalizeTables(text), source: "gemini" });
     }
   }
   const tOcr = Date.now();
