@@ -1,0 +1,46 @@
+{
+  "name": "mea-docs",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "db:setup": "node scripts/setup-db.mjs",
+    "postinstall": "node scripts/copy-assets.mjs"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "franc-min": "^6.2.0",
+    "ibantools": "^4.5.4",
+    "jose": "^6.2.12",
+    "lucide-react": "^1.49.0",
+    "mammoth": "^1.11.0",
+    "moment-hijri": "^3.0.0",
+    "mongoose": "^9.10.3",
+    "next": "16.3.8",
+    "nodemailer": "^10.0.13",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^5.4.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "server-only": "^0.0.1",
+    "tesseract.js": "^6.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20",
+    "@types/nodemailer": "^8.0.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "dotenv": "^16.4.7",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.8",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

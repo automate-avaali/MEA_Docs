@@ -1,0 +1,257 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* mea.docs palette — the vitals.diary design system, warmed for the Gulf: deep teal-navy, terracotta, sand.
+   Plus Arabic/Urdu typography + RTL further down. */
+:root {
+  color-scheme: light;
+  --bg: #faf8f4;
+  --surface: #ffffff;
+  --surface-2: #f2efe8;
+  --cream: #f8efe1;
+  --cream-line: #ecdcc2;
+  --ink: #0d0f12;
+  --ink-2: #4d5058;
+  --muted: #8a8a86;
+  --line: #e5e1d8;
+  --navy: #0f2f4a;
+  --coral: #d4643a;
+  --coral-ink: #b04a22;
+  --coral-soft: #fbe9df;
+  --invert-bg: #0d0f12;
+  --invert-ink: #faf8f4;
+  /* headline highlighter — apricot, matches the terracotta accent */
+  --mark: #ffdcbf;
+  --mark-ink: #0f2f4a;
+  /* text placed directly on the painted sky (auth pages) */
+  --sky-ink: #0d0f12;
+  --sky-ink-2: #5c6a86;
+  --sky-ink-3: rgba(15, 47, 74, 0.7);
+  --accent-shadow: rgba(212, 100, 58, 0.55);
+
+  /* status (fixed, never themed) */
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+
+  /* chart series */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --grid: #ece8df;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --bg: #0c1015;
+    --surface: #141a21;
+    --surface-2: #1c232c;
+    --cream: #231b14;
+    --cream-line: #3a2c1f;
+    --ink: #f2efe8;
+    --ink-2: #c2c0b8;
+    --muted: #8b8e94;
+    --line: #262d36;
+    --navy: #cfe3f5;
+    --coral: #ec7a4d;
+    --coral-ink: #ff9a70;
+    --coral-soft: #3a2017;
+    --invert-bg: #f2efe8;
+    --invert-ink: #0c1015;
+    --mark: #5a3320;
+    --mark-ink: #ffc9a3;
+    --sky-ink: #f2efe8;
+    --sky-ink-2: #aab6d6;
+    --sky-ink-3: rgba(207, 227, 245, 0.7);
+    --accent-shadow: rgba(236, 122, 77, 0.45);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --grid: #262d36;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0c1015;
+  --surface: #141a21;
+  --surface-2: #1c232c;
+  --cream: #231b14;
+  --cream-line: #3a2c1f;
+  --ink: #f2efe8;
+  --ink-2: #c2c0b8;
+  --muted: #8b8e94;
+  --line: #262d36;
+  --navy: #cfe3f5;
+  --coral: #ec7a4d;
+  --coral-ink: #ff9a70;
+  --coral-soft: #3a2017;
+  --invert-bg: #f2efe8;
+  --invert-ink: #0c1015;
+  --mark: #5a3320;
+  --mark-ink: #ffc9a3;
+  --sky-ink: #f2efe8;
+  --sky-ink-2: #aab6d6;
+  --sky-ink-3: rgba(207, 227, 245, 0.7);
+  --accent-shadow: rgba(236, 122, 77, 0.45);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --grid: #262d36;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-cream: var(--cream);
+  --color-cream-line: var(--cream-line);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-navy: var(--navy);
+  --color-coral: var(--coral);
+  --color-coral-ink: var(--coral-ink);
+  --color-coral-soft: var(--coral-soft);
+  --color-invert: var(--invert-bg);
+  --color-invert-ink: var(--invert-ink);
+  --color-mark: var(--mark);
+  --color-sky-ink: var(--sky-ink);
+  --color-sky-ink-2: var(--sky-ink-2);
+  --color-sky-ink-3: var(--sky-ink-3);
+  --color-good: var(--good);
+  --color-warning: var(--warning);
+  --color-serious: var(--serious);
+  --color-critical: var(--critical);
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-serif-display);
+  --font-mono: var(--font-mono-code);
+  --font-accent: var(--font-accent-serif);
+}
+
+html {
+  background: var(--bg);
+}
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--mark);
+  color: var(--mark-ink);
+}
+
+/* painted-sky drift */
+@keyframes drift {
+  from { transform: translate3d(-2%, 0, 0); }
+  to { transform: translate3d(2%, 0, 0); }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+.animate-drift { animation: drift 40s ease-in-out infinite alternate; }
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.animate-marquee { animation: marquee 45s linear infinite; }
+.animate-rise { animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.caret { animation: blink 1s steps(1) infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-drift, .animate-rise, .caret, .animate-marquee { animation: none; }
+}
+
+/* bribes.fyi buttons: square, flat. Primary = solid ink, secondary = outlined. */
+.btn-coral {
+  background: var(--coral);
+  color: #fff;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.22), 0 8px 20px -8px var(--accent-shadow);
+}
+.btn-coral:hover { filter: brightness(1.05); }
+.btn-coral:active { transform: translateY(1px); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.22); }
+.btn-cream {
+  background: var(--cream);
+  color: var(--coral-ink);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--cream-line);
+}
+
+/* Yellow highlighter on bold italic serif — the bribes.fyi headline signature. */
+.vd-mark {
+  /* marker stroke under the lower half of the word — never overlaps neighbouring lines */
+  background: linear-gradient(transparent 58%, var(--mark) 58%, var(--mark) 92%, transparent 92%);
+  color: inherit;
+  font-style: italic;
+  padding: 0 0.08em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+/* markdown in chat */
+.prose-chat > :first-child { margin-top: 0; }
+.prose-chat p { margin: 0.65em 0; }
+.prose-chat ul, .prose-chat ol { margin: 0.6em 0; padding-left: 1.15em; }
+.prose-chat ul { list-style: disc; }
+.prose-chat ol { list-style: decimal; }
+.prose-chat li { margin: 0.35em 0; padding-left: 0.1em; }
+.prose-chat li::marker { color: var(--coral); }
+.prose-chat strong { font-weight: 600; }
+.prose-chat h1, .prose-chat h2, .prose-chat h3 { font-weight: 700; font-size: 1.05em; margin: 1.1em 0 0.35em; color: var(--navy); }
+.prose-chat table { border-collapse: collapse; margin: 0.5em 0; font-size: 0.9em; }
+.prose-chat th, .prose-chat td { border: 1px solid var(--line); padding: 4px 8px; }
+.prose-chat a { color: var(--coral-ink); text-decoration: underline; }
+.prose-chat strong { background: linear-gradient(transparent 60%, color-mix(in srgb, var(--mark) 70%, transparent) 60%); }
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+}
+
+
+/* ── Arabic / Urdu typography ─────────────────────────────────────────────── */
+html[lang="ar"] body { font-family: var(--font-arabic), var(--font-inter), system-ui, sans-serif; }
+html[lang="ur"] body { font-family: var(--font-urdu), var(--font-arabic), system-ui, sans-serif; line-height: 1.9; }
+html[lang="ar"] .font-serif, html[lang="ur"] .font-serif { font-family: var(--font-arabic-display), var(--font-serif-display), serif; font-style: normal; }
+html[lang="ar"] .font-accent, html[lang="ur"] .font-accent { font-family: var(--font-arabic-display), serif; font-style: normal; }
+html[lang="ar"] .vd-mark, html[lang="ur"] .vd-mark { font-style: normal; }
+/* Mixed-direction content: each message/snippet picks its own direction from its first strong character. */
+.bidi { unicode-bidi: plaintext; text-align: start; }
+[dir="auto"] { text-align: start; }
+
+.prose-chat[dir="rtl"] ul, .prose-chat[dir="rtl"] ol { padding-left: 0; padding-right: 1.15em; }
+.prose-chat code { font-family: var(--font-mono-code), monospace; font-size: 0.88em; background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 4px; }
+.prose-chat .cite { display: inline-grid; place-items: center; min-width: 1.35em; height: 1.35em; padding: 0 0.3em; margin: 0 0.1em; border-radius: 999px; background: var(--coral-soft); color: var(--coral-ink); font: 600 0.72em var(--font-mono-code), monospace; vertical-align: 0.15em; cursor: pointer; text-decoration: none; }
+.prose-chat .cite:hover { background: var(--coral); color: #fff; }
+
+/* upload drop zone */
+.dropzone { background-image: repeating-linear-gradient(135deg, transparent 0 14px, color-mix(in srgb, var(--cream-line) 55%, transparent) 14px 15px); }
+.dropzone[data-over="true"] { border-color: var(--coral); background-color: var(--coral-soft); }
+@keyframes stripes { from { background-position: 0 0; } to { background-position: 28px 0; } }
+.progress-live { background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.25) 0 7px, transparent 7px 14px); animation: stripes 0.8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .progress-live { animation: none; } }
+
+/* Painted sky: day/dusk art in light mode, night art in dark mode (system setting or the toggle). */
+.sky-night { display: none; }
+:root[data-theme="dark"] .sky-day { display: none; }
+:root[data-theme="dark"] .sky-night { display: contents; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .sky-day { display: none; }
+  :root:not([data-theme="light"]) .sky-night { display: contents; }
+}
+@keyframes pop { from { opacity: 0; transform: translateY(-4px) scale(0.97); } to { opacity: 1; transform: none; } }
+.animate-pop { animation: pop 0.14s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) { .animate-pop { animation: none; } }
+@keyframes twinkle { 0%, 100% { opacity: 0.25; } 50% { opacity: 0.9; } }
+.animate-twinkle { animation: twinkle 4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .animate-twinkle { animation: none; } }
