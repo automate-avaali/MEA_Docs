@@ -1,4 +1,4 @@
-# MongoDB Atlas indexes for mea.docs
+# MongoDB Atlas indexes for Avagama MiddleEast Docs
 
 Create both on **Database `mea_arabic_chatbot` → Collection `chunks`**.
 Atlas → your cluster → **Atlas Search** tab → **Create Search Index** → choose the type → **JSON Editor** → paste → Next → Create.

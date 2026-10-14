@@ -15,9 +15,9 @@ const arabicDisplay = Noto_Kufi_Arabic({ variable: "--font-arabic-display", subs
 const urdu = Noto_Nastaliq_Urdu({ variable: "--font-urdu", subsets: ["arabic"], weight: ["400", "600", "700"] });
 
 export const metadata: Metadata = {
-  title: { default: "mea.docs — ask your Arabic & English documents", template: "%s · mea.docs" },
+  title: { default: "Avagama MiddleEast Docs — ask your Arabic & English documents", template: "%s · Avagama MiddleEast Docs" },
   description: "Upload scanned or digital contracts and invoices in Arabic or English and ask questions with page-cited answers.",
-  applicationName: "mea.docs",
+  applicationName: "Avagama MiddleEast Docs",
 };
 
 export const viewport: Viewport = {

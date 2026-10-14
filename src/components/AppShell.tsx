@@ -34,7 +34,7 @@ export function AppShell({ user: initial, children }: { user: PublicUser; childr
       <div className="min-h-dvh bg-bg">
         <header className="sticky top-0 z-30 border-b border-line bg-bg/90 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-2 px-4 sm:h-[72px]">
-            <Wordmark href="/chat" className="text-lg text-ink sm:text-[22px]" />
+            <Wordmark href="/chat" className="text-ink" />
             <div className="flex items-center gap-1 sm:gap-2">
               <LanguageSelect compact />
               <ThemeToggle className="size-9 sm:size-10" />

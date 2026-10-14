@@ -2,7 +2,7 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* mea.docs palette — the vitals.diary design system, warmed for the Gulf: deep teal-navy, terracotta, sand.
+/* Avagama MiddleEast Docs palette — the vitals.diary design system, warmed for the Gulf: deep teal-navy, terracotta, sand.
    Plus Arabic/Urdu typography + RTL further down. */
 :root {
   color-scheme: light;

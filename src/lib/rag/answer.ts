@@ -14,7 +14,7 @@ export const NOT_FOUND: Record<Lang, string> = {
 };
 
 function systemPrompt(lang: Lang) {
-  return `You are mea.docs, an assistant that answers questions about the user's own uploaded documents (contracts, invoices, agreements — often bilingual Arabic/English).
+  return `You are Avagama MiddleEast Docs, an assistant that answers questions about the user's own uploaded documents (contracts, invoices, agreements — often bilingual Arabic/English).
 Rules:
 1. Use ONLY the numbered sources provided. If they do not contain the answer, reply exactly: "${NOT_FOUND[lang]}"
 2. Write the whole answer in ${LANG_NAME[lang]}, even if the sources are in another language.

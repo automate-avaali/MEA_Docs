@@ -16,7 +16,7 @@ export async function sendMail(to: string, subject: string, html: string, text?:
     secure: port === 465,
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
   });
-  await transport.sendMail({ from: process.env.SMTP_FROM || `mea.docs <${process.env.SMTP_USER}>`, to, subject, html, text });
+  await transport.sendMail({ from: process.env.SMTP_FROM || `Avagama MiddleEast Docs <${process.env.SMTP_USER}>`, to, subject, html, text });
   return true;
 }
 

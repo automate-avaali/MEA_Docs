@@ -1,4 +1,4 @@
-# mea.docs — Arabic / English document RAG
+# Avagama MiddleEast Docs — Arabic / English document RAG
 
 Upload scanned or digital contracts and invoices of any size (Arabic, English, bilingual), then ask
 questions in Arabic, English or Urdu and get answers with page citations. Next.js 16 (frontend + API on

@@ -49,7 +49,7 @@ const en = {
     eyebrow: "Document intelligence for the Arab world",
     title: "Your contracts and invoices,",
     accent: "answered.",
-    sub: "Upload scanned or digital documents of any size in Arabic or English. mea.docs reads them, indexes every page, and answers your questions with exact page citations.",
+    sub: "Upload scanned or digital documents of any size in Arabic or English. Avagama MiddleEast Docs reads them, indexes every page, and answers your questions with exact page citations.",
     ctaStart: "Create a free account",
     ctaSignIn: "I already have an account",
     features: [

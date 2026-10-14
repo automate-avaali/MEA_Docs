@@ -10,8 +10,10 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
       <ThemedSky day="day" />
       <div className="relative flex min-h-dvh flex-col items-center px-4 py-6">
         <div className="flex w-full max-w-md items-center justify-between">
-          <Link href="/" dir="ltr" className="font-mono font-semibold text-[22px] text-sky-ink">
-            mea<span className="text-sky-ink-2 font-normal">.docs</span>
+          <Link href="/" dir="ltr" className="font-mono font-semibold tracking-tight text-[14px] sm:text-[19px] text-sky-ink">
+            <span className="flex flex-col leading-[1.15] sm:block">
+              Avagama <span className="text-sky-ink-2 font-normal">MiddleEast Docs</span>
+            </span>
           </Link>
           <LanguageSelect compact />
         </div>

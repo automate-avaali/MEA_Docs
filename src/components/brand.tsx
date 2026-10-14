@@ -10,8 +10,11 @@ import { cn } from "./ui";
 export function Wordmark({ className, href = "/" }: { className?: string; href?: string }) {
   // Brand stays LTR in every language.
   return (
-    <Link href={href} dir="ltr" className={cn("font-mono font-semibold tracking-tight text-[22px] leading-none", className)} aria-label="mea.docs home">
-      mea<span className="text-muted font-normal">.docs</span>
+    <Link href={href} dir="ltr" className={cn("font-mono font-semibold tracking-tight text-[14px] sm:text-[19px] leading-none", className)} aria-label="Avagama MiddleEast Docs home">
+      {/* Too long for a phone header on one line — stacks below sm, sits inline above it. */}
+      <span className="flex flex-col leading-[1.15] sm:block">
+        Avagama <span className="text-muted font-normal">MiddleEast Docs</span>
+      </span>
     </Link>
   );
 }
