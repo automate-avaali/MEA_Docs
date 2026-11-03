@@ -1,12 +1,13 @@
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
-import { HttpError, handle, publicUser, rateLimit } from "@/lib/auth";
+import { HttpError, handle, publicUser, rateLimit, signupEnabled } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import { User } from "@/lib/models";
 import { SESSION_COOKIE, cookieOptions, signSession } from "@/lib/session";
 import { LOCALE_COOKIE, toLocale } from "@/i18n/config";
 
 export const POST = handle(async (req: Request) => {
+  if (!signupEnabled()) throw new HttpError(403, "signup_disabled");
   await rateLimit("signup", 10, 3600);
   const { name, email, password, locale } = await req.json();
   if (!name?.trim() || !email?.trim() || !password) throw new HttpError(400, "missing_fields");

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { HttpError, handle, requireUser } from "@/lib/auth";
 import { publicDocument } from "@/lib/docs";
+import { checkUpload } from "@/lib/limits";
 import { DocumentModel, type DocumentDoc } from "@/lib/models";
 import { ensureRegularIndexes, ensureSearchIndexes } from "@/lib/rag/store";
 
@@ -35,6 +36,7 @@ export const POST = handle(async (req: Request) => {
   if (existing) {
     return NextResponse.json({ document: publicDocument(existing), donePages: existing.pagesDone ?? [], resumed: true });
   }
+  await checkUpload(user, { size: Number(size) || 0, pageCount });
   const doc = await DocumentModel.create({
     userId: user._id,
     title: String(title).slice(0, 200),

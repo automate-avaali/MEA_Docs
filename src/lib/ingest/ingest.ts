@@ -140,7 +140,12 @@ async function renderPage(pdf: Awaited<ReturnType<Awaited<ReturnType<typeof pdfj
   return canvas;
 }
 
-export async function ingestFile(file: File, onProgress: (p: Progress) => void, signal?: AbortSignal): Promise<Progress> {
+export async function ingestFile(
+  file: File,
+  onProgress: (p: Progress) => void,
+  signal?: AbortSignal,
+  limits?: { maxFileMB?: number; maxPagesPerDoc?: number } | null,
+): Promise<Progress> {
   const progress: Progress = { stage: "hashing", done: 0, total: 0, flagged: 0 };
   const emit = (patch: Partial<Progress>) => {
     Object.assign(progress, patch);
@@ -150,6 +155,8 @@ export async function ingestFile(file: File, onProgress: (p: Progress) => void, 
   try {
     const kind = kindOf(file);
     if (!kind) throw new IngestError("unsupported_file");
+    // Account limits are enforced by the server too; checking here avoids hashing/reading a file that will be refused.
+    if (limits?.maxFileMB != null && file.size > limits.maxFileMB * 1024 * 1024) throw new IngestError("file_too_large");
     emit({ stage: "hashing" });
     const bytes = await file.arrayBuffer();
     const hash = await sha256(bytes);
@@ -167,6 +174,7 @@ export async function ingestFile(file: File, onProgress: (p: Progress) => void, 
 
     const pdf = pdfBytes ? await (await pdfjs()).getDocument({ data: pdfBytes.slice() }).promise : null;
     const total = pdf ? pdf.numPages : textPages!.length;
+    if (limits?.maxPagesPerDoc != null && total > limits.maxPagesPerDoc) throw new IngestError("page_limit");
     emit({ total, stage: "reading" });
 
     // ── Register (or resume) the document ──

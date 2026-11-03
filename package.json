@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "db:setup": "node scripts/setup-db.mjs",
+    "user:set": "node scripts/set-user.mjs",
     "postinstall": "node scripts/copy-assets.mjs"
   },
   "dependencies": {

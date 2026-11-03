@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import { HttpError, handle, requireUser } from "@/lib/auth";
 import { oid } from "@/lib/docs";
+import { consume, refund } from "@/lib/limits";
 import { Conversation, DocumentModel, Message } from "@/lib/models";
 import { answer, NOT_FOUND, retrievalQueries } from "@/lib/rag/answer";
 import { retrieve } from "@/lib/rag/retrieve";
@@ -21,6 +22,14 @@ export const POST = handle(async (req: Request) => {
   // Conversation (new or existing) + scope
   let convo = body.conversationId ? await Conversation.findOne({ _id: oid(body.conversationId), userId: user._id }) : null;
   if (body.conversationId && !convo) throw new HttpError(404, "not_found");
+
+  // Daily quotas (limited accounts only): every question counts; a new conversation also counts as a chat.
+  await consume(user, "questions");
+  if (!convo) await consume(user, "chats").catch(async (e) => {
+    await refund(user, "questions");
+    throw e;
+  });
+  const isNewChat = !convo;
   const requestedDocs: string[] = Array.isArray(body.documentIds) ? body.documentIds : [];
   const docIds = requestedDocs.length
     ? (await DocumentModel.find({ _id: { $in: requestedDocs.map(oid) }, userId: user._id }, { _id: 1 }).lean()).map((d) => d._id as Types.ObjectId)
@@ -90,6 +99,11 @@ export const POST = handle(async (req: Request) => {
         console.error("[chat]", e);
         const code = /llm_/.test((e as Error).message) ? "llm_unavailable" : "server_error";
         if (full.trim()) await Message.create({ conversationId: convo!._id, userId: user._id, role: "assistant", content: full, lang, sources, timings }).catch(() => {});
+        else {
+          // Nothing was answered → don't charge the quota for it.
+          await refund(user, "questions");
+          if (isNewChat) await refund(user, "chats");
+        }
         send({ t: "error", code });
       } finally {
         controller.close();

@@ -62,6 +62,9 @@ export async function rateLimit(scope: string, max: number, windowSec: number) {
 }
 
 export function publicUser(u: UserDoc) {
-  return { id: String(u._id), name: u.name, email: u.email, locale: (u.locale ?? "en") as "en" | "ar" | "ur" };
+  return { id: String(u._id), name: u.name, email: u.email, locale: (u.locale ?? "en") as "en" | "ar" | "ur", limits: u.limits ?? null };
 }
 export type PublicUser = ReturnType<typeof publicUser>;
+
+/** New accounts can only be created when SIGNUP_ENABLED=true (off for client deployments). */
+export const signupEnabled = () => process.env.SIGNUP_ENABLED === "true";

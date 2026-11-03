@@ -15,6 +15,8 @@ export async function proxy(req: NextRequest) {
     return NextResponse.redirect(url);
   }
   if (session && AUTH.includes(pathname)) return NextResponse.redirect(new URL("/chat", req.url));
+  // Sign-up is closed unless SIGNUP_ENABLED=true — accounts are created by the administrator.
+  if (pathname === "/signup" && process.env.SIGNUP_ENABLED !== "true") return NextResponse.redirect(new URL("/login", req.url));
   return NextResponse.next();
 }
 

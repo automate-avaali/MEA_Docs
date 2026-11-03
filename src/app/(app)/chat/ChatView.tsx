@@ -15,6 +15,7 @@ import { detectLang, isRtl } from "@/lib/text/arabic";
 
 type Source = { n: number; documentId: string; title: string; page: number; section: string; snippet: string; score: number };
 type Msg = { id?: string; role: "user" | "assistant"; content: string; lang?: string; sources?: Source[]; issues?: string[]; timings?: Record<string, number> | null; pending?: "search" | "write" };
+type Usage = { used: { questions: number; chats: number }; resetsAt: string };
 type ConvoItem = { id: string; title: string; documentIds: string[]; updatedAt: string };
 
 const dirFor = (text: string, fallback: string) => (isRtl(detectLang(text, fallback as "en")) ? "rtl" : "ltr");
@@ -33,6 +34,8 @@ const cleanSnippet = (s: string) =>
 export function ChatView() {
   const { t, tError, messages } = useT();
   const { user } = useApp();
+  const limits = user.limits;
+  const [usage, setUsage] = useState<Usage | null>(null);
   const router = useRouter();
   const params = useSearchParams();
   const convoId = params.get("c");
@@ -54,6 +57,15 @@ export function ChatView() {
       .then((d) => setConvos(d.conversations))
       .catch(() => {});
   }, []);
+
+  // Daily quota (limited accounts only) — shown on the welcome screen, refreshed after every question.
+  const loadUsage = useCallback(() => {
+    if (!limits) return;
+    api<Usage>("/api/usage")
+      .then(setUsage)
+      .catch(() => {});
+  }, [limits]);
+  useEffect(loadUsage, [loadUsage]);
 
   useEffect(() => {
     api<{ documents: PublicDocument[] }>("/api/documents")
@@ -138,6 +150,7 @@ export function ChatView() {
     } finally {
       setStreaming(false);
       loadConvos();
+      loadUsage();
     }
   }
 
@@ -238,6 +251,21 @@ export function ChatView() {
                 <Mark>{t("chat.hello", { name: user.name.split(" ")[0] })}</Mark>
               </div>
               <p className="mt-2 max-w-md text-sm text-ink-2">{noDocs ? t("chat.noDocs") : t("chat.sub")}</p>
+              {limits && (limits.questionsPerDay != null || limits.chatsPerDay != null) && (
+                <div className="mt-4 max-w-lg rounded-2xl border border-cream-line bg-cream px-4 py-3 text-sm text-ink-2">
+                  <div className="font-medium text-ink">
+                    {t("chat.limitNote", { chats: limits.chatsPerDay ?? "∞", questions: limits.questionsPerDay ?? "∞" })}
+                  </div>
+                  {usage && (
+                    <div className="mt-1 text-xs text-muted">
+                      {t("chat.limitLeft", {
+                        chats: limits.chatsPerDay != null ? Math.max(0, limits.chatsPerDay - usage.used.chats) : "∞",
+                        questions: limits.questionsPerDay != null ? Math.max(0, limits.questionsPerDay - usage.used.questions) : "∞",
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
               {noDocs ? (
                 <Link href="/documents" className="mt-6 inline-flex h-11 items-center bg-invert px-5 font-mono text-[13px] uppercase tracking-wide text-invert-ink">
                   {t("chat.goUpload")}

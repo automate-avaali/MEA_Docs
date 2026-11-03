@@ -5,12 +5,15 @@ import { AlertTriangle, CheckCircle2, FileText, FileUp, Loader2, MessageSquareTe
 import type { PublicDocument } from "@/lib/docs";
 import { ingestFile, type Progress } from "@/lib/ingest/ingest";
 import { useT } from "@/i18n/client";
+import { useApp } from "@/components/AppShell";
 import { Button, Empty, PageHeader, Spinner, Tag, api, cn, errorCode, fmtBytes } from "@/components/ui";
 
 type Job = { id: string; file: File; progress: Progress };
 
 export default function DocumentsPage() {
   const { t, tError, intl } = useT();
+  const { user } = useApp();
+  const limits = user.limits;
   const [docs, setDocs] = useState<PublicDocument[] | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [over, setOver] = useState(false);
@@ -44,11 +47,11 @@ export default function DocumentsPage() {
     running.current = true;
     while (queue.current.length) {
       const job = queue.current.shift()!;
-      await ingestFile(job.file, (p) => setJobs((js) => js.map((j) => (j.id === job.id ? { ...j, progress: p } : j))));
+      await ingestFile(job.file, (p) => setJobs((js) => js.map((j) => (j.id === job.id ? { ...j, progress: p } : j))), undefined, limits);
       load();
     }
     running.current = false;
-  }, [load]);
+  }, [load, limits]);
 
   function addFiles(list: FileList | File[]) {
     const fresh = [...list].map((file) => ({ id: crypto.randomUUID(), file, progress: { stage: "hashing", done: 0, total: 0, flagged: 0 } as Progress }));
@@ -104,6 +107,16 @@ export default function DocumentsPage() {
           </button>
         </div>
         <div className="mt-3 font-mono text-[11px] uppercase tracking-[0.12em] text-muted">{t("docs.types")}</div>
+        {limits?.maxDocuments != null && (
+          <div className="mt-3 rounded-full bg-surface px-3 py-1 text-xs text-ink-2 ring-1 ring-line">
+            {t("docs.limitNote", {
+              used: docs?.length ?? "…",
+              max: limits.maxDocuments,
+              pages: limits.maxPagesPerDoc ?? "∞",
+              mb: limits.maxFileMB ?? "∞",
+            })}
+          </div>
+        )}
         <input
           ref={input}
           type="file"

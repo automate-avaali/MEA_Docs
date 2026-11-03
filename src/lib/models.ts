@@ -6,6 +6,14 @@ type Stamps = { _id: Id; createdAt: Date; updatedAt: Date };
 const lower = (s: string) => s?.toLowerCase().trim();
 
 // ── Users ────────────────────────────────────────────────────────────────────
+/** Optional per-account quotas (see lib/limits.ts). Missing = unlimited. */
+export interface Limits {
+  maxDocuments?: number;
+  maxPagesPerDoc?: number;
+  maxFileMB?: number;
+  chatsPerDay?: number;
+  questionsPerDay?: number;
+}
 export interface UserDoc extends Stamps {
   name: string;
   email: string;
@@ -14,6 +22,7 @@ export interface UserDoc extends Stamps {
   sessionVersion: number;
   resetTokenHash?: string;
   resetTokenExpires?: Date;
+  limits?: Limits;
 }
 const UserSchema = new Schema<UserDoc>(
   {
@@ -24,6 +33,13 @@ const UserSchema = new Schema<UserDoc>(
     sessionVersion: { type: Number, default: 0 },
     resetTokenHash: String,
     resetTokenExpires: Date,
+    limits: {
+      type: new Schema<Limits>(
+        { maxDocuments: Number, maxPagesPerDoc: Number, maxFileMB: Number, chatsPerDay: Number, questionsPerDay: Number },
+        { _id: false },
+      ),
+      default: undefined,
+    },
   },
   { timestamps: true },
 );
@@ -134,6 +150,23 @@ export interface RateHitDoc {
 }
 const RateSchema = new Schema<RateHitDoc>({ key: { type: String, index: true }, at: { type: Date, default: Date.now, expires: 3600 } });
 
+// ── Daily usage counters for limited accounts (one row per user per local day, kept 40 days) ──
+export interface UsageDoc {
+  userId: Id;
+  day: string; // YYYY-MM-DD in the limit time zone
+  questions: number;
+  chats: number;
+  createdAt: Date;
+}
+const UsageSchema = new Schema<UsageDoc>({
+  userId: { type: Schema.Types.ObjectId, required: true },
+  day: { type: String, required: true },
+  questions: { type: Number, default: 0 },
+  chats: { type: Number, default: 0 },
+  createdAt: { type: Date, default: Date.now, expires: 40 * 86400 },
+});
+UsageSchema.index({ userId: 1, day: 1 }, { unique: true });
+
 function model<T>(name: string, schema: Schema<T>): Model<T> {
   return (mongoose.models[name] as Model<T>) || mongoose.model<T>(name, schema);
 }
@@ -143,6 +176,7 @@ export const DocumentModel = model<DocumentDoc>("Document", DocumentSchema);
 export const Conversation = model<ConversationDoc>("Conversation", ConversationSchema);
 export const Message = model<MessageDoc>("Message", MessageSchema);
 export const RateHit = model<RateHitDoc>("RateHit", RateSchema);
+export const Usage = model<UsageDoc>("Usage", UsageSchema);
 
 /** Chunks live in a plain collection (binary vectors + Atlas Search indexes), see lib/rag/store.ts. */
 export const CHUNKS = "chunks";

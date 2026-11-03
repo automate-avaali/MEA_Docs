@@ -6,7 +6,7 @@ import { PasswordInput } from "@/components/PasswordInput";
 import { Button, ErrorNote, Input, Label, SuccessNote, api, errorCode } from "@/components/ui";
 import { useT } from "@/i18n/client";
 
-export function LoginForm({ next, reset }: { next: string; reset: boolean }) {
+export function LoginForm({ next, reset, signup }: { next: string; reset: boolean; signup: boolean }) {
   const { t, tError } = useT();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -32,12 +32,14 @@ export function LoginForm({ next, reset }: { next: string; reset: boolean }) {
       accent={t("auth.login.accent")}
       sub={t("auth.login.sub")}
       footer={
-        <>
-          {t("auth.login.newHere")}{" "}
-          <Link href="/signup" className="font-semibold text-coral-ink hover:underline">
-            {t("auth.login.create")}
-          </Link>
-        </>
+        signup ? (
+          <>
+            {t("auth.login.newHere")}{" "}
+            <Link href="/signup" className="font-semibold text-coral-ink hover:underline">
+              {t("auth.login.create")}
+            </Link>
+          </>
+        ) : undefined
       }
     >
       <form onSubmit={submit} className="space-y-4">

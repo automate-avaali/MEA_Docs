@@ -23,6 +23,12 @@ const en = {
   },
   nav: { chat: "Ask", documents: "Documents", settings: "Settings", more: "More" },
   errors: {
+    doc_limit: "This account has reached its document limit. Delete a document to upload another.",
+    page_limit: "This file has more pages than this account allows. Split it into smaller files.",
+    file_too_large: "This file is larger than this account allows. Compress it or split it into smaller files.",
+    daily_question_limit: "You've used all of today's questions for this account. The limit resets at midnight (Riyadh time).",
+    daily_chat_limit: "You've started the maximum number of new chats for today. Continue an existing chat from History, or try again after midnight (Riyadh time).",
+    signup_disabled: "New accounts can't be created here. Please contact your administrator.",
     missing_fields: "Please fill in all the fields.",
     invalid_email: "Please enter a valid email address.",
     weak_password: "Password must be at least 8 characters.",
@@ -74,6 +80,7 @@ const en = {
     hidePassword: "Hide password",
   },
   docs: {
+    limitNote: "{used} of {max} documents used · up to {pages} pages and {mb} MB per file",
     eyebrow: "Your library",
     title: "Upload &",
     accent: "index.",
@@ -116,6 +123,8 @@ const en = {
     progress: "{done} / {total} pages",
   },
   chat: {
+    limitNote: "This account can start {chats} new chats and ask {questions} questions per day.",
+    limitLeft: "Left today: {chats} chats · {questions} questions · resets at midnight (Riyadh time)",
     eyebrow: "Ask your documents",
     title: "Ask",
     accent: "anything.",
