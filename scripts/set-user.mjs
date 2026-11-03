@@ -1,7 +1,7 @@
 // Creates or updates an account, optionally with usage limits (sign-up is closed on client deployments).
 //
 //   USER_PASSWORD='…' node scripts/set-user.mjs --email client@company.com --name "Client" \
-//     --max-docs 10 --max-pages 50 --max-mb 25 --chats 30 --questions 60
+//     --max-docs 15 --max-pages 50 --max-mb 25 --questions 60
 //
 //   node scripts/set-user.mjs --email client@company.com --no-limits      (remove limits)
 //

@@ -1,6 +1,8 @@
 import { SignJWT, jwtVerify } from "jose";
 
 export const SESSION_COOKIE = "md_session";
+/** Set (for a year) when a limited client account signs in: that browser no longer offers sign-up. */
+export const NO_SIGNUP_COOKIE = "md_nosignup";
 const MAX_AGE = 60 * 60 * 24 * 7;
 
 function secret() {

@@ -254,14 +254,18 @@ export function ChatView() {
               {limits && (limits.questionsPerDay != null || limits.chatsPerDay != null) && (
                 <div className="mt-4 max-w-lg rounded-2xl border border-cream-line bg-cream px-4 py-3 text-sm text-ink-2">
                   <div className="font-medium text-ink">
-                    {t("chat.limitNote", { chats: limits.chatsPerDay ?? "∞", questions: limits.questionsPerDay ?? "∞" })}
+                    {limits.chatsPerDay != null
+                      ? t("chat.limitNote", { chats: limits.chatsPerDay, questions: limits.questionsPerDay ?? "∞" })
+                      : t("chat.limitNoteQ", { questions: limits.questionsPerDay!, docs: limits.maxDocuments ?? "∞" })}
                   </div>
                   {usage && (
                     <div className="mt-1 text-xs text-muted">
-                      {t("chat.limitLeft", {
-                        chats: limits.chatsPerDay != null ? Math.max(0, limits.chatsPerDay - usage.used.chats) : "∞",
-                        questions: limits.questionsPerDay != null ? Math.max(0, limits.questionsPerDay - usage.used.questions) : "∞",
-                      })}
+                      {limits.chatsPerDay != null
+                        ? t("chat.limitLeft", {
+                            chats: Math.max(0, limits.chatsPerDay - usage.used.chats),
+                            questions: limits.questionsPerDay != null ? Math.max(0, limits.questionsPerDay - usage.used.questions) : "∞",
+                          })
+                        : t("chat.limitLeftQ", { questions: Math.max(0, limits.questionsPerDay! - usage.used.questions) })}
                     </div>
                   )}
                 </div>

@@ -26,7 +26,7 @@ const en = {
     doc_limit: "This account has reached its document limit. Delete a document to upload another.",
     page_limit: "This file has more pages than this account allows. Split it into smaller files.",
     file_too_large: "This file is larger than this account allows. Compress it or split it into smaller files.",
-    daily_question_limit: "You've used all of today's questions for this account. The limit resets at midnight (Riyadh time).",
+    daily_question_limit: "You've used all of today's chats for this account. Your limit resets tomorrow.",
     daily_chat_limit: "You've started the maximum number of new chats for today. Continue an existing chat from History, or try again after midnight (Riyadh time).",
     signup_disabled: "New accounts can't be created here. Please contact your administrator.",
     missing_fields: "Please fill in all the fields.",
@@ -125,6 +125,8 @@ const en = {
   chat: {
     limitNote: "This account can start {chats} new chats and ask {questions} questions per day.",
     limitLeft: "Left today: {chats} chats · {questions} questions · resets at midnight (Riyadh time)",
+    limitNoteQ: "This account can have {questions} chats per day and up to {docs} documents.",
+    limitLeftQ: "{questions} chats left today · resets tomorrow",
     eyebrow: "Ask your documents",
     title: "Ask",
     accent: "anything.",

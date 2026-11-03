@@ -8,7 +8,7 @@ import { getMessages } from "@/i18n/server";
 const ICONS = [ScanText, FileSearch, Languages, MessagesSquare];
 
 export default async function Landing() {
-  const [{ messages: m }, user] = await Promise.all([getMessages(), getCurrentUser().catch(() => null)]);
+  const [{ messages: m }, user, signup] = await Promise.all([getMessages(), getCurrentUser().catch(() => null), signupEnabled()]);
   const L = m.landing;
   return (
     <div className="min-h-dvh bg-bg">
@@ -34,10 +34,10 @@ export default async function Landing() {
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-white/90">{L.sub}</p>
           <div className="mt-10 flex flex-wrap justify-center gap-3">
-            <Link href={user ? "/documents" : signupEnabled() ? "/signup" : "/login"} className="btn-coral inline-flex h-12 items-center rounded-xl px-6 font-semibold">
+            <Link href={user ? "/documents" : signup ? "/signup" : "/login"} className="btn-coral inline-flex h-12 items-center rounded-xl px-6 font-semibold">
               {L.ctaStart}
             </Link>
-            {!user && signupEnabled() && (
+            {!user && (
               <Link href="/login" className="btn-cream inline-flex h-12 items-center rounded-xl px-6 font-semibold">
                 {L.ctaSignIn}
               </Link>

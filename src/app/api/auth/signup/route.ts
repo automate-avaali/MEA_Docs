@@ -7,7 +7,7 @@ import { SESSION_COOKIE, cookieOptions, signSession } from "@/lib/session";
 import { LOCALE_COOKIE, toLocale } from "@/i18n/config";
 
 export const POST = handle(async (req: Request) => {
-  if (!signupEnabled()) throw new HttpError(403, "signup_disabled");
+  if (!(await signupEnabled())) throw new HttpError(403, "signup_disabled");
   await rateLimit("signup", 10, 3600);
   const { name, email, password, locale } = await req.json();
   if (!name?.trim() || !email?.trim() || !password) throw new HttpError(400, "missing_fields");

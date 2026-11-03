@@ -63,11 +63,12 @@ shown as "please verify" notes if they don't match.
 
 ## Accounts & limits
 
-Sign-up is closed unless `SIGNUP_ENABLED=true` (the `/signup` page redirects to `/login` and the API returns `signup_disabled`).
-Accounts are created by the administrator, optionally with per-account limits:
+Sign-up is open, except in a browser where a limited account has signed in: that browser gets a one-year cookie,
+`/signup` redirects to `/login`, the sign-up links are hidden and the API returns `signup_disabled`.
+`SIGNUP_ENABLED=false` closes sign-up for everyone. Accounts can also be created by the administrator, optionally with limits:
 
 ```bash
-USER_PASSWORD='…' npm run user:set -- --email client@company.com --name "Client"   --max-docs 10 --max-pages 50 --max-mb 25 --chats 30 --questions 60
+USER_PASSWORD='…' npm run user:set -- --email client@company.com --name "Client"   --max-docs 15 --max-pages 50 --max-mb 25 --questions 60
 npm run user:set -- --email client@company.com --questions 100   # change one limit
 npm run user:set -- --email client@company.com --no-limits        # remove limits
 ```

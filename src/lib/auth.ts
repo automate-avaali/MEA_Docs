@@ -2,7 +2,7 @@ import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { connectDB } from "./db";
 import { RateHit, User, type UserDoc } from "./models";
-import { SESSION_COOKIE, verifySession } from "./session";
+import { NO_SIGNUP_COOKIE, SESSION_COOKIE, verifySession } from "./session";
 
 /** Errors carry a stable `code` so the client can show them in the user's language. */
 export class HttpError extends Error {
@@ -66,5 +66,11 @@ export function publicUser(u: UserDoc) {
 }
 export type PublicUser = ReturnType<typeof publicUser>;
 
-/** New accounts can only be created when SIGNUP_ENABLED=true (off for client deployments). */
-export const signupEnabled = () => process.env.SIGNUP_ENABLED === "true";
+/**
+ * Sign-up is open, except (a) everywhere when SIGNUP_ENABLED=false, and (b) in a browser where a limited
+ * client account (e.g. menabev@avaali.com) has signed in — that browser gets the NO_SIGNUP_COOKIE.
+ */
+export async function signupEnabled() {
+  if (process.env.SIGNUP_ENABLED === "false") return false;
+  return !(await cookies()).get(NO_SIGNUP_COOKIE);
+}

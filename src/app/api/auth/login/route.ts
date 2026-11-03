@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { HttpError, handle, publicUser, rateLimit } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import { User, type UserDoc } from "@/lib/models";
-import { SESSION_COOKIE, cookieOptions, signSession } from "@/lib/session";
+import { NO_SIGNUP_COOKIE, SESSION_COOKIE, cookieOptions, signSession } from "@/lib/session";
 import { LOCALE_COOKIE } from "@/i18n/config";
 
 export const POST = handle(async (req: Request) => {
@@ -16,5 +16,7 @@ export const POST = handle(async (req: Request) => {
   const res = NextResponse.json({ user: publicUser(user) });
   res.cookies.set(SESSION_COOKIE, await signSession(String(user._id), user.sessionVersion ?? 0), cookieOptions);
   res.cookies.set(LOCALE_COOKIE, user.locale ?? "en", { path: "/", maxAge: 31536000, sameSite: "lax" });
+  // Limited client accounts: this browser stops offering sign-up (kept after sign-out).
+  if (user.limits) res.cookies.set(NO_SIGNUP_COOKIE, "1", { path: "/", maxAge: 31536000, sameSite: "lax", httpOnly: true, secure: cookieOptions.secure });
   return res;
 });

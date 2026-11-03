@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, verifySession } from "./lib/session";
+import { NO_SIGNUP_COOKIE, SESSION_COOKIE, verifySession } from "./lib/session";
 
 const APP = ["/chat", "/documents", "/settings"];
 const AUTH = ["/login", "/signup"];
@@ -15,8 +15,8 @@ export async function proxy(req: NextRequest) {
     return NextResponse.redirect(url);
   }
   if (session && AUTH.includes(pathname)) return NextResponse.redirect(new URL("/chat", req.url));
-  // Sign-up is closed unless SIGNUP_ENABLED=true — accounts are created by the administrator.
-  if (pathname === "/signup" && process.env.SIGNUP_ENABLED !== "true") return NextResponse.redirect(new URL("/login", req.url));
+  // No sign-up in a browser used by a limited client account, or anywhere when SIGNUP_ENABLED=false.
+  if (pathname === "/signup" && (process.env.SIGNUP_ENABLED === "false" || req.cookies.has(NO_SIGNUP_COOKIE))) return NextResponse.redirect(new URL("/login", req.url));
   return NextResponse.next();
 }
 
