@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { AlertTriangle, ArrowUp, Check, ChevronDown, Copy, FileText, Files, History, Plus, Trash2, Wand2, X } from "lucide-react";
+import { AlertTriangle, ArrowUp, Check, ChevronDown, Copy, FileText, Files, History, Plus, Search, Trash2, Wand2, X } from "lucide-react";
 import { useApp } from "@/components/AppShell";
 import { Mark, Spinner, Tag, api, cn, fmtMs } from "@/components/ui";
 import type { PublicDocument } from "@/lib/docs";
@@ -464,6 +464,21 @@ function AssistantMessage({ m, streaming }: { m: Msg; streaming: boolean }) {
 function ScopePicker({ docs, value, onChange }: { docs: PublicDocument[]; value: string[]; onChange: (v: string[]) => void }) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  // Search by title or file name; Arabic letter variants (أ/إ/آ → ا, ة → ه, ى → ي) and diacritics are ignored.
+  const fold = (x: string) =>
+    x
+      .toLowerCase()
+      .replace(/[ً-ْـ]/g, "")
+      .replace(/[أإآ]/g, "ا")
+      .replace(/ة/g, "ه")
+      .replace(/ى/g, "ي");
+  const q = fold(query.trim());
+  const shown = q ? docs.filter((d) => fold(`${d.title} ${d.fileName ?? ""}`).includes(q)) : docs;
+  const close = () => {
+    setOpen(false);
+    setQuery("");
+  };
   const label = value.length ? t("chat.scopeSome", { n: value.length }) : t("chat.scopeAll");
   return (
     <div className="relative">
@@ -472,16 +487,42 @@ function ScopePicker({ docs, value, onChange }: { docs: PublicDocument[]; value:
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="animate-pop absolute end-0 z-50 mt-2 max-h-80 w-72 overflow-y-auto rounded-2xl border border-line bg-surface p-1.5 shadow-[0_24px_60px_-20px_rgba(13,15,18,0.45)]">
-            <div className="px-2 pb-2 pt-1">
+          <div className="fixed inset-0 z-40" onClick={close} />
+          <div className="animate-pop absolute end-0 z-50 mt-2 max-h-80 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border border-line bg-surface p-1.5 shadow-[0_24px_60px_-20px_rgba(13,15,18,0.45)]">
+            <div className="sticky -top-1.5 z-10 -mx-1.5 -mt-1.5 bg-surface px-3.5 pb-2 pt-2.5">
               <Tag>{t("chat.scopeTitle")}</Tag>
+              {docs.length > 0 && (
+                <div className="relative mt-2">
+                  <Search className="pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" />
+                  <input
+                    autoFocus
+                    type="text"
+                    dir="auto"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Escape" && close()}
+                    placeholder={t("chat.scopeSearch")}
+                    aria-label={t("chat.scopeSearch")}
+                    className="h-9 w-full rounded-lg border border-line bg-surface-2 ps-8 pe-8 text-sm text-ink outline-none placeholder:text-muted focus:border-coral/60 focus:ring-2 focus:ring-coral/15"
+                  />
+                  {query && (
+                    <button
+                      onClick={() => setQuery("")}
+                      aria-label={t("common.clear")}
+                      className="absolute end-1.5 top-1/2 grid size-6 -translate-y-1/2 cursor-pointer place-items-center rounded-md text-muted hover:bg-surface hover:text-ink"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
             <button onClick={() => onChange([])} className={cn("flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-start text-sm hover:bg-surface-2", !value.length && "font-semibold")}>
               <span className={cn("grid size-4 place-items-center rounded border", !value.length ? "border-coral bg-coral text-white" : "border-line")}>{!value.length && <Check className="size-3" />}</span>
               {t("chat.scopeAll")}
             </button>
-            {docs.map((d) => {
+            {q && !shown.length && <div className="px-2 py-3 text-sm text-muted">{t("chat.scopeNone")}</div>}
+            {shown.map((d) => {
               const on = value.includes(d.id);
               return (
                 <button

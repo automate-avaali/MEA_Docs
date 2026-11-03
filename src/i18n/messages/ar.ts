@@ -3,6 +3,7 @@ import type { Messages } from "./en";
 const ar: Messages = {
   brand: { tagline: "اسأل مستنداتك — بالعربية أو الإنجليزية أو الأردية." },
   common: {
+    clear: "مسح",
     signIn: "تسجيل الدخول",
     signOut: "تسجيل الخروج",
     getStarted: "ابدأ الآن",
@@ -139,6 +140,8 @@ const ar: Messages = {
     scopeAll: "جميع المستندات",
     scopeSome: "{n} محدد",
     scopeTitle: "البحث في",
+    scopeSearch: "ابحث في المستندات…",
+    scopeNone: "لا توجد مستندات مطابقة.",
     answerIn: "لغة الإجابة",
     answerAuto: "نفس لغة السؤال",
     placeholder: "اسأل عن عقودك وفواتيرك…",

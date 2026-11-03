@@ -1,6 +1,7 @@
 const en = {
   brand: { tagline: "Ask your documents — in Arabic, English or Urdu." },
   common: {
+    clear: "Clear",
     signIn: "Sign in",
     signOut: "Sign out",
     getStarted: "Get started",
@@ -137,6 +138,8 @@ const en = {
     scopeAll: "All documents",
     scopeSome: "{n} selected",
     scopeTitle: "Search in",
+    scopeSearch: "Search documents…",
+    scopeNone: "No matching documents.",
     answerIn: "Answer in",
     answerAuto: "Same as question",
     placeholder: "Ask about your contracts, invoices…",

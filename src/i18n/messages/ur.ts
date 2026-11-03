@@ -3,6 +3,7 @@ import type { Messages } from "./en";
 const ur: Messages = {
   brand: { tagline: "اپنی دستاویزات سے پوچھیں — عربی، انگریزی یا اردو میں۔" },
   common: {
+    clear: "صاف کریں",
     signIn: "سائن اِن",
     signOut: "سائن آؤٹ",
     getStarted: "شروع کریں",
@@ -139,6 +140,8 @@ const ur: Messages = {
     scopeAll: "تمام دستاویزات",
     scopeSome: "{n} منتخب",
     scopeTitle: "تلاش کریں",
+    scopeSearch: "دستاویزات تلاش کریں…",
+    scopeNone: "کوئی مماثل دستاویز نہیں ملی۔",
     answerIn: "جواب کی زبان",
     answerAuto: "سوال کی زبان میں",
     placeholder: "اپنے معاہدوں، انوائسز کے بارے میں پوچھیں…",
