@@ -1,12 +1,10 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useApp } from "@/components/AppShell";
 import { LanguageSelect, ThemeToggle } from "@/components/brand";
 import { PasswordInput, StrengthMeter } from "@/components/PasswordInput";
 import { Button, Card, ErrorNote, Input, Label, PageHeader, SuccessNote, Tag, api, errorCode } from "@/components/ui";
 import { useT } from "@/i18n/client";
-
-type Health = { db: string; dbMs: number; providers: Record<string, string> };
 
 export default function SettingsPage() {
   const { t, tError } = useT();
@@ -19,14 +17,6 @@ export default function SettingsPage() {
   const [pwBusy, setPwBusy] = useState(false);
   const [del, setDel] = useState("");
   const [delErr, setDelErr] = useState("");
-  const [health, setHealth] = useState<Health | null>(null);
-
-  useEffect(() => {
-    fetch("/api/health")
-      .then((r) => r.json())
-      .then(setHealth)
-      .catch(() => {});
-  }, []);
 
   async function saveName(e: React.FormEvent) {
     e.preventDefault();
@@ -124,23 +114,8 @@ export default function SettingsPage() {
           </form>
         </Card>
 
-        <Card className="p-5 sm:p-6">
-          <Tag n={4}>{t("settings.system")}</Tag>
-          <p className="mt-2 text-sm text-ink-2">{t("settings.systemHint")}</p>
-          {health && (
-            <dl className="mt-4 grid gap-px overflow-hidden rounded-lg border border-line bg-line font-mono text-xs sm:grid-cols-2" dir="ltr">
-              {[["database", `${health.db} · ${health.dbMs} ms`], ...Object.entries(health.providers)].map(([k, v]) => (
-                <div key={k} className="flex justify-between gap-3 bg-surface px-3 py-2">
-                  <dt className="uppercase tracking-wider text-muted">{k}</dt>
-                  <dd className="truncate text-ink">{v}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
-        </Card>
-
         <Card className="border-critical/30 p-5 sm:p-6">
-          <Tag n={5} className="text-critical">
+          <Tag n={4} className="text-critical">
             {t("settings.danger")}
           </Tag>
           <p className="mt-2 text-sm text-ink-2">{t("settings.dangerBody")}</p>

@@ -172,8 +172,6 @@ const en = {
     confirm: "Confirm new password",
     changePassword: "Update password",
     changed: "Password changed. Other devices were signed out.",
-    system: "System status",
-    systemHint: "Which services this installation uses.",
     danger: "Delete account",
     dangerBody: "Permanently deletes your account, documents, index and chat history. This cannot be undone.",
     dangerConfirm: "Enter your password to confirm",
