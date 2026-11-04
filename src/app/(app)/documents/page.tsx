@@ -69,8 +69,8 @@ export default function DocumentsPage() {
 
   async function finishEmbeddings(d: PublicDocument) {
     for (let i = 0; i < 50; i++) {
-      const r = await api<{ remaining: number }>(`/api/documents/${d.id}/embed`, { method: "POST" }).catch(() => null);
-      if (!r || r.remaining === 0) break;
+      const r = await api<{ remaining: number; done: number }>(`/api/documents/${d.id}/embed`, { method: "POST" }).catch(() => null);
+      if (!r || r.remaining === 0 || r.done === 0) break; // done = 0 → the embedding service is unavailable; stop
     }
     load();
   }

@@ -61,3 +61,24 @@ export async function streamChat(messages: ChatMsg[], opts: { maxTokens?: number
     }
   })();
 }
+
+/** One-shot (non-streaming) completion — used for the small query-rewrite step. */
+export async function completeChat(messages: ChatMsg[], opts: { maxTokens?: number; signal?: AbortSignal; model?: string } = {}) {
+  const res = await fetch(`${base()}/chat/completions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.FANAR_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: opts.model || process.env.FANAR_MODEL || "Fanar-C-2-27B",
+      messages,
+      temperature: 0,
+      max_tokens: opts.maxTokens ?? 400,
+    }),
+    signal: opts.signal ?? AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) throw new Error(`llm_${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
+  const j = await res.json();
+  return { text: String(j.choices?.[0]?.message?.content ?? ""), usage: j.usage as { prompt_tokens: number; completion_tokens: number } | undefined };
+}
+
+/** Fanar-C-2-27B accepts 16,000 tokens in total (prompt + answer). */
+export const CONTEXT_TOKENS = Number(process.env.FANAR_CONTEXT_TOKENS) || 16_000;

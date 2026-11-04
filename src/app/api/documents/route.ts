@@ -1,13 +1,29 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { HttpError, handle, requireUser } from "@/lib/auth";
 import { publicDocument } from "@/lib/docs";
 import { checkUpload } from "@/lib/limits";
 import { DocumentModel, type DocumentDoc } from "@/lib/models";
+import { backfillEmbeddings } from "@/lib/rag/ingest";
 import { ensureRegularIndexes, ensureSearchIndexes } from "@/lib/rag/store";
+
+export const maxDuration = 60;
 
 export const GET = handle(async () => {
   const user = await requireUser();
   const docs = await DocumentModel.find({ userId: user._id }).sort({ createdAt: -1 }).limit(500).lean<DocumentDoc[]>();
+  // Self-healing index: chunks stored while the embedding service was down get their vectors in the
+  // background whenever the library is opened (same model, so they join dense search seamlessly).
+  const pending = docs.filter((d) => (d.pendingEmbeddings ?? 0) > 0).slice(0, 3);
+  if (pending.length) {
+    after(async () => {
+      for (const d of pending) {
+        for (let i = 0; i < 4; i++) {
+          const r = await backfillEmbeddings(d._id).catch((e) => (console.warn("[backfill]", e.message), null));
+          if (!r || r.remaining === 0 || r.done === 0) break;
+        }
+      }
+    });
+  }
   return NextResponse.json({ documents: docs.map(publicDocument) });
 });
 

@@ -20,7 +20,7 @@ export async function rerank(query: string, docs: string[], topN: number): Promi
         top_n: Math.min(topN, docs.length),
         return_documents: false,
       }),
-      signal: AbortSignal.timeout(4_000),
+      signal: AbortSignal.timeout(6_000),
     });
     if (!res.ok) return null;
     const j = await res.json();

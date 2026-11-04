@@ -41,13 +41,23 @@ Atlas indexes: create them once in the Atlas UI with the JSON in [docs/atlas-ind
 5. Server: clean → **structure-aware chunking** → **bge-m3** embeddings (batched, parallel, retry, single
    model) → idempotent write to `chunks` (float32 BSON vectors).
 
-**Chunking** (`src/lib/rag/chunk.ts`): page-aware (citations), section-aware (`Article (3)`, `المادة (3)`,
-`ANNEX`, headings start sections; the section title is carried with each chunk), tables never split from
-their header row, ~1,400 chars with sentence overlap, contextual header (`document · section`) embedded.
+**Chunking** (`src/lib/rag/chunk.ts`): structure-aware + recursive with overlap. Page-aware (citations; every
+page starts a new chunk, so the top of a page — IDs, letterheads — begins a chunk), section-aware (`Article (3)`,
+`المادة (3)`, `ANNEX`, headings start sections; the section title travels with each chunk), tables never split
+from their header row, ~1,400 chars, recursive splitting paragraph → line → sentence → clause → words, ~240-char
+overlap, very short lines (a lone "ID: ١٠٤١٩٠") never dropped, contextual header (`document · page · section`)
+embedded.
 
-**Retrieval** (`src/lib/rag/retrieve.ts`): BM25 (Atlas Search, `lucene.arabic` + English analyzer, Arabic
-normalisation) and vector search (`$vectorSearch`) run in parallel → **Reciprocal Rank Fusion** → **Jina**
-rerank of the top 30 → top 8. Follow-up questions are also searched together with the previous question.
+**Query understanding** (`src/lib/rag/rewrite.ts`): every message is first rewritten by Fanar with the thread
+(last 10 Q&A pairs): connected follow-ups become self-contained questions, bilingual (English + Arabic)
+keyword queries are generated, page references ("top right of the first page") become a page filter, small talk
+("my name is Suhas") is answered from the conversation, and unclear fragments ("ID #") get one clarifying
+question. Falls back to the raw question + a fixed EN↔AR contract-term expansion if the rewrite fails.
+
+**Retrieval** (`src/lib/rag/retrieve.ts`): for each query, sparse BM25 (Atlas Search, `lucene.arabic` + English,
+Arabic normalisation, Arabic-Indic digits → 0-9) **top 30** and dense bge-m3 (`$vectorSearch`) **top 30** in
+parallel (+ the chunks of any page the user pointed at) → **Reciprocal Rank Fusion** → **top 40** → **Jina
+cross-encoder** → **top 20**, packed into Fanar's 16K-token window best-first next to the thread.
 
 **Answering** (`src/lib/rag/answer.ts`, `/api/chat`): streams NDJSON — sources appear first, then the answer.
 The question's language is detected (`detectLang`: script ratio + Urdu letters, 13/13 in tests); the first

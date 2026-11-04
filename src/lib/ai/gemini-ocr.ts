@@ -18,6 +18,8 @@ For each page:
 - Keep every number, date, slash and backslash exactly as printed (for example [1\\01\\2026.]).
 - Write Arabic in logical reading order. Render tables as Markdown tables with a header row.
 - Use "## " for document titles and article/annex headings.
+- Start each page with what is at its very top — logos, boxed fields, stamps, reference/ID numbers in the corners (for example a box "ID: ١٠٤١٩٠" at the top right) — then the body, then footers ("Page 1 of 9", version lines). Never leave out boxes, stamps, seals, margin or corner text.
+- Numbers written in Arabic-Indic digits: keep them as written and add the Western digits in parentheses, e.g. ID: ١٠٤١٩٠ (104190).
 - Write handwritten text as you read it; if illegible write [illegible]. For an empty page write [blank page].`;
 
 /** Splits "=== Page N ===" output by page NUMBER (tolerates duplicated or missing markers). */
@@ -62,6 +64,12 @@ export async function ocrPdf(pdf: Uint8Array, pageCount: number): Promise<string
       body,
       signal: AbortSignal.timeout(110_000),
     });
+    // 401/403: key revoked or the project lost its free tier → same as quota: the browser OCRs these pages
+    // itself (Tesseract) instead of the whole upload failing.
+    if (res.status === 401 || res.status === 403) {
+      console.warn(`[ocr] gemini ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
+      throw new OcrQuotaError(3600);
+    }
     if (res.status === 429) {
       const ra = Number(res.headers.get("retry-after")) || undefined;
       throw new OcrQuotaError(ra);

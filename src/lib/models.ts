@@ -59,6 +59,7 @@ export interface DocumentDoc extends Stamps {
   language?: string; // ar / en / ur / mixed
   ocr: { gemini: number; tesseract: number; textLayer: number; flagged: number[] };
   pendingEmbeddings: number;
+  suggestions?: Partial<Record<"en" | "ar" | "ur", string[]>>; // starter questions this document can answer, per UI language
   error?: string;
 }
 const DocumentSchema = new Schema<DocumentDoc>(
@@ -81,6 +82,7 @@ const DocumentSchema = new Schema<DocumentDoc>(
       flagged: { type: [Number], default: [] },
     },
     pendingEmbeddings: { type: Number, default: 0 },
+    suggestions: { type: Schema.Types.Mixed, default: undefined },
     error: String,
   },
   { timestamps: true },
@@ -122,6 +124,7 @@ export interface MessageDoc {
   sources?: SourceDoc[];
   issues?: string[];
   timings?: Record<string, number>;
+  query?: Record<string, unknown>; // how the question was understood (intent, standalone, search queries, pages)
   createdAt: Date;
 }
 const SourceSchema = new Schema<SourceDoc>(
@@ -138,6 +141,7 @@ const MessageSchema = new Schema<MessageDoc>(
     sources: { type: [SourceSchema], default: undefined },
     issues: { type: [String], default: undefined },
     timings: { type: Schema.Types.Mixed },
+    query: { type: Schema.Types.Mixed },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );

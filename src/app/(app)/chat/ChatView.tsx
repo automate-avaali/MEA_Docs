@@ -18,6 +18,8 @@ type Msg = { id?: string; role: "user" | "assistant"; content: string; lang?: st
 type Usage = { used: { questions: number; chats: number }; resetsAt: string };
 type ConvoItem = { id: string; title: string; documentIds: string[]; updatedAt: string };
 
+const NOT_FOUND_LINE = /\n*\s*(I couldn't find this in your documents\.|لم أجد هذه المعلومة في مستنداتك\.|مجھے یہ معلومات آپ کی دستاویزات میں نہیں ملی۔)\s*$/;
+
 const dirFor = (text: string, fallback: string) => (isRtl(detectLang(text, fallback as "en")) ? "rtl" : "ltr");
 
 /** Source previews: Markdown tables → readable "cell · cell" rows, no separator lines or tags. */
@@ -32,7 +34,7 @@ const cleanSnippet = (s: string) =>
     .trim();
 
 export function ChatView() {
-  const { t, tError, messages } = useT();
+  const { t, tError, messages, locale } = useT();
   const { user } = useApp();
   const limits = user.limits;
   const [usage, setUsage] = useState<Usage | null>(null);
@@ -170,6 +172,24 @@ export function ChatView() {
 
   const noDocs = docs !== null && docs.length === 0;
 
+  // Starter questions written from the user's own documents (the selected ones, else the latest), in the UI language.
+  const [suggested, setSuggested] = useState<{ question: string; documentId: string; title: string }[] | null>(null);
+  const scopeKey = scope.join(",");
+  const welcome = msgs !== null && msgs.length === 0 && !!docs?.length;
+  useEffect(() => {
+    if (!welcome) return;
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- show placeholders while the questions load
+    setSuggested(null);
+    api<{ questions: { question: string; documentId: string; title: string }[] }>(`/api/suggestions?locale=${locale}${scopeKey ? `&docs=${scopeKey}` : ""}`)
+      .then((d) => !cancelled && setSuggested(d.questions))
+      .catch(() => !cancelled && setSuggested([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [welcome, scopeKey, locale]);
+  const starters = suggested?.length ? suggested : suggested ? messages.chat.starters.map((q: string) => ({ question: q, documentId: "", title: "" })) : null;
+
   return (
     <div className="-mt-2 flex h-[calc(100dvh-150px)] min-h-[480px] gap-6 lg:h-[calc(100dvh-120px)]">
       {/* History (desktop column / mobile drawer) */}
@@ -276,12 +296,29 @@ export function ChatView() {
                 </Link>
               ) : (
                 <div className="mt-8 grid w-full max-w-3xl gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2">
-                  {messages.chat.starters.map((s, i) => (
-                    <button key={s} onClick={() => send(s)} className="flex cursor-pointer flex-col justify-start bg-surface p-5 text-start transition hover:bg-cream">
-                      <Tag n={i + 1}>{t("chat.send")}</Tag>
-                      <div className="bidi mt-3 text-[15px] font-medium text-ink">{s}</div>
-                    </button>
-                  ))}
+                  {starters
+                    ? starters.map((s, i) => (
+                        <button key={s.question} onClick={() => send(s.question)} className="flex cursor-pointer flex-col justify-start bg-surface p-5 text-start transition hover:bg-cream">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <Tag n={i + 1}>{t("chat.send")}</Tag>
+                            {s.title && (
+                              <span className="bidi inline-flex min-w-0 items-center gap-1 truncate text-xs text-muted" title={s.title}>
+                                <FileText className="size-3 shrink-0" /> <span className="truncate">{s.title}</span>
+                              </span>
+                            )}
+                          </div>
+                          <div dir="auto" className="bidi mt-3 text-[15px] font-medium text-ink">
+                            {s.question}
+                          </div>
+                        </button>
+                      ))
+                    : [0, 1, 2, 3].map((i) => (
+                        <div key={i} className="bg-surface p-5" aria-hidden>
+                          <div className="h-3 w-24 animate-pulse rounded bg-line" />
+                          <div className="mt-4 h-4 w-11/12 animate-pulse rounded bg-line" />
+                          <div className="mt-2 h-4 w-2/3 animate-pulse rounded bg-line" />
+                        </div>
+                      ))}
                 </div>
               )}
             </div>
@@ -344,7 +381,15 @@ function AssistantMessage({ m, streaming }: { m: Msg; streaming: boolean }) {
   // [n] → clickable citation chips (only for numbers that match a source).
   const md = useMemo(() => {
     const max = m.sources?.length ?? 0;
-    return m.content.replace(/\[(\d{1,2})\]/g, (all, n) => (Number(n) >= 1 && Number(n) <= max ? `[${n}](#src-${n})` : all));
+    const titleOf = (n: string) => m.sources?.[Number(n) - 1]?.title;
+    let text = m.content;
+    // A real answer followed by the stock "not found" line → drop that line.
+    const rest = text.replace(NOT_FOUND_LINE, "").trim();
+    if (rest && rest !== text.trim()) text = rest;
+    return text
+      .replace(/\b(?:document|source)\s*\[(\d{1,2})\]|(?:المستند|المصدر|مصدر)\s*\[(\d{1,2})\]/gi, (all, a, b) => (titleOf(a ?? b) ? `${titleOf(a ?? b)} [${a ?? b}]` : all)) // "Document [3]" → its name
+      .replace(/((?:\[\d{1,2}\]){3})(?:\[\d{1,2}\])+/g, "$1") // at most 3 citations in a row
+      .replace(/\[(\d{1,2})\]/g, (all, n) => (Number(n) >= 1 && Number(n) <= max ? `[${n}](#src-${n})` : all));
   }, [m.content, m.sources]);
 
   const showSource = (n: number) => {

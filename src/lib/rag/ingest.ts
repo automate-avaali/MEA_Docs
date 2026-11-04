@@ -4,7 +4,7 @@ import type { Types } from "mongoose";
 import { collection } from "../db";
 import { CHUNKS, DocumentModel, type DocumentDoc } from "../models";
 import { ocrPdf } from "../ai/gemini-ocr";
-import { embedMany } from "../ai/embed";
+import { embedManyPartial } from "../ai/embed";
 import { cleanText, detectContentLang, searchNormalize } from "../text/arabic";
 import { normalizeTables } from "../text/tables";
 import { extractDates, invalidIbans } from "../text/verify";
@@ -95,15 +95,20 @@ export async function processBatch(opts: {
 
   // Embed. If the embedding service is down, chunks are still stored (keyword search works) and
   // marked pending; /api/documents/[id]/embed fills them in later with the SAME model.
+  // Batches that succeed keep their vectors even if another batch fails (never all-or-nothing). The budget
+  // is whatever is left of the route's 120 s after OCR.
   let pending = 0;
   if (rows.length) {
-    try {
-      const vectors = await embedMany(chunks.map((c) => embeddingText(doc.title, c)));
-      rows.forEach((r, i) => (r.embedding = toVector(vectors[i])));
-    } catch (e) {
-      console.warn(`[ingest] embedding failed for ${doc._id}: ${(e as Error).message}`);
-      pending = rows.length;
-    }
+    const { vectors, error } = await embedManyPartial(
+      chunks.map((c) => embeddingText(doc.title, c)),
+      { budgetMs: Math.max(20_000, 100_000 - (Date.now() - t0)) },
+    );
+    rows.forEach((r, i) => {
+      const v = vectors[i];
+      if (v) r.embedding = toVector(v);
+      else pending++;
+    });
+    if (pending) console.warn(`[ingest] ${pending}/${rows.length} chunks of ${doc._id} stored without embeddings (${error}) — they are filled in later`);
   }
   const tEmbed = Date.now();
 
@@ -133,19 +138,35 @@ export async function processBatch(opts: {
   };
 }
 
-/** Embeds chunks stored without a vector (embedding service was down during upload). */
-export async function backfillEmbeddings(documentId: Types.ObjectId, limit = 96) {
+/**
+ * Embeds chunks stored without a vector (embedding service was down during upload). Small steps (48 chunks),
+ * and every finished batch is written immediately — a slow or failing provider still makes progress.
+ */
+export async function backfillEmbeddings(documentId: Types.ObjectId, opts: { limit?: number; budgetMs?: number } = {}) {
   const col = await collection(CHUNKS);
   const missing = await col
-    .find({ documentId, embedding: { $exists: false } }, { projection: { docTitle: 1, section: 1, content: 1 } })
-    .limit(limit)
+    .find({ documentId, embedding: { $exists: false } }, { projection: { docTitle: 1, page: 1, pageEnd: 1, section: 1, content: 1 } })
+    .limit(opts.limit ?? 48)
     .toArray();
-  if (!missing.length) return { done: 0, remaining: 0 };
-  const vectors = await embedMany(missing.map((c) => `${c.docTitle}${c.section ? ` · ${c.section}` : ""}\n${c.content}`));
-  await col.bulkWrite(missing.map((c, i) => ({ updateOne: { filter: { _id: c._id }, update: { $set: { embedding: toVector(vectors[i]) } } } })));
+  if (!missing.length) {
+    await DocumentModel.updateOne({ _id: documentId }, { $set: { pendingEmbeddings: 0 } });
+    return { done: 0, remaining: 0, error: null };
+  }
+  let done = 0;
+  const { error } = await embedManyPartial(
+    missing.map((c) => embeddingText(c.docTitle, { page: c.page, pageEnd: c.pageEnd, section: c.section, content: c.content, isTable: false })),
+    {
+      budgetMs: opts.budgetMs ?? 45_000,
+      onBatch: async (start, vecs) => {
+        await col.bulkWrite(vecs.map((v, k) => ({ updateOne: { filter: { _id: missing[start + k]._id }, update: { $set: { embedding: toVector(v) } } } })));
+        done += vecs.length;
+      },
+    },
+  );
   const remaining = await col.countDocuments({ documentId, embedding: { $exists: false } });
   await DocumentModel.updateOne({ _id: documentId }, { $set: { pendingEmbeddings: remaining } });
-  return { done: missing.length, remaining };
+  if (error) console.warn(`[backfill] ${documentId}: ${done} embedded, ${remaining} remaining (${error})`);
+  return { done, remaining, error };
 }
 
 /** Final bookkeeping once the browser has sent every page. */

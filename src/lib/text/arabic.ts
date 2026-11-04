@@ -6,6 +6,15 @@ const DIGIT_MAP: Record<string, string> = {
 };
 export const westernDigits = (s: string) => s.replace(/[٠-٩۰-۹]/g, (d) => DIGIT_MAP[d]);
 
+/**
+ * "ID: ١٠٤١٩٠" → "ID: ١٠٤١٩٠ (104190)" for text shown to the LLM / reranker: models often don't read
+ * Arabic-Indic digits as the number a user asks about. Numbers already followed by their Western form are kept.
+ */
+export const annotateDigits = (s: string) =>
+  s.replace(/[٠-٩۰-۹][٠-٩۰-۹٫٬,./\\-]*[٠-٩۰-۹]/g, (m, offset: number, all: string) =>
+    /^\s*\(\d/.test(all.slice(offset + m.length)) ? m : `${m} (${westernDigits(m).replace(/٫/g, ".").replace(/٬/g, ",")})`,
+  );
+
 /** Cleans text for storage/display: fixes PDF presentation-form glyphs (NFKC), tatweel, zero-width chars, spacing. */
 export function cleanText(s: string) {
   return s
