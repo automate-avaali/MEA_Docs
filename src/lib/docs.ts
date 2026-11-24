@@ -29,6 +29,7 @@ export function publicDocument(d: DocumentDoc) {
     language: d.language ?? "",
     ocr: { gemini: d.ocr?.gemini ?? 0, tesseract: d.ocr?.tesseract ?? 0, textLayer: d.ocr?.textLayer ?? 0, flagged: d.ocr?.flagged ?? [] },
     pendingEmbeddings: d.pendingEmbeddings ?? 0,
+    hasFile: Boolean(d.file?.pathname),
     createdAt: (d as unknown as { createdAt: Date }).createdAt,
   };
 }

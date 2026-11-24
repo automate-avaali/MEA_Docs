@@ -4,6 +4,7 @@ import { HttpError, handle, requireUser } from "@/lib/auth";
 import { collection } from "@/lib/db";
 import { CHUNKS, Conversation, DocumentModel, Message, User } from "@/lib/models";
 import { SESSION_COOKIE } from "@/lib/session";
+import { deleteFiles, userPrefix } from "@/lib/storage";
 
 /** Deletes the account and ALL its data (documents, chunks, conversations). Requires the password. */
 export const DELETE = handle(async (req: Request) => {
@@ -16,6 +17,7 @@ export const DELETE = handle(async (req: Request) => {
     DocumentModel.deleteMany({ userId: user._id }),
     Message.deleteMany({ userId: user._id }),
     Conversation.deleteMany({ userId: user._id }),
+    deleteFiles(userPrefix(user._id)).catch((e) => console.error("[storage] account delete", String(user._id), e.message)),
   ]);
   await user.deleteOne();
   const res = NextResponse.json({ ok: true });

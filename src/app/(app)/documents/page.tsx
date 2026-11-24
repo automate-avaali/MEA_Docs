@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, FileText, FileUp, Loader2, MessageSquareText, RotateCw, Trash2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, ExternalLink, FileText, FileUp, Loader2, MessageSquareText, RotateCw, Trash2, XCircle } from "lucide-react";
 import type { PublicDocument } from "@/lib/docs";
 import { ingestFile, type Progress } from "@/lib/ingest/ingest";
 import { useT } from "@/i18n/client";
@@ -199,6 +199,29 @@ export default function DocumentsPage() {
                         <MessageSquareText className="size-3.5" /> {t("docs.ask")}
                       </Link>
                     )}
+                    {d.hasFile && (
+                      <>
+                        <a
+                          href={`/api/documents/${d.id}/file`}
+                          target="_blank"
+                          rel="noopener"
+                          title={t("docs.openFile")}
+                          aria-label={t("docs.openFile")}
+                          className="grid size-8 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-ink"
+                        >
+                          <ExternalLink className="size-4" />
+                        </a>
+                        <a
+                          href={`/api/documents/${d.id}/file?download=1`}
+                          download={d.fileName || d.title}
+                          title={t("docs.download")}
+                          aria-label={t("docs.download")}
+                          className="grid size-8 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-ink"
+                        >
+                          <Download className="size-4" />
+                        </a>
+                      </>
+                    )}
                     <button onClick={() => remove(d)} aria-label={t("common.delete")} className="grid size-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-critical/10 hover:text-critical">
                       <Trash2 className="size-4" />
                     </button>
@@ -265,6 +288,7 @@ function JobRow({ job, onDismiss }: { job: Job; onDismiss: () => void }) {
           {p.resumed ? <div className="mt-0.5 text-xs text-muted">{t("docs.stage.resumed", { n: p.resumed })}</div> : null}
           {p.quota && <div className="mt-1 text-xs text-[#9a6a00] dark:text-warning">{t("docs.stage.quota")}</div>}
           {p.flagged > 0 && <div className="mt-1 text-xs text-[#9a6a00] dark:text-warning">{t("docs.flagged", { n: p.flagged })}</div>}
+          {p.fileNotSaved && <div className="mt-1 text-xs text-[#9a6a00] dark:text-warning">{t("docs.fileNotSaved")}</div>}
         </div>
         <div className="font-mono text-sm text-ink-2">{finished ? (p.stage === "done" ? <CheckCircle2 className="size-5 text-good" /> : <XCircle className="size-5 text-critical" />) : `${pct}%`}</div>
         {finished && (

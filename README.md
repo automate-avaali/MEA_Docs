@@ -26,6 +26,7 @@ Atlas indexes: create them once in the Atlas UI with the JSON in [docs/atlas-ind
 | `FANAR_API_KEY`, `FANAR_BASE_URL`, `FANAR_MODEL` | Answers (`Fanar-C-2-27B`) — point `FANAR_BASE_URL` at your own vLLM to self-host | 50 req/min |
 | `SMTP_*` (optional) | Password-reset emails. Unset → link shown on screen in dev | — |
 | `ATLAS_AUTO_INDEXES` | `false` = indexes managed manually in Atlas | — |
+| `BLOB_READ_WRITE_TOKEN` (optional) | Keeps the original uploaded files in a **private** Vercel Blob store. When connecting the Blob store to the project, tick **Add a read-write token env var to this connection** (browser uploads need it; keep the prefix `BLOB`). For local dev, put a read-write token in `.env.local`. Unset → files are indexed but not kept | Hobby plan allowance |
 
 ## How it works
 
@@ -40,6 +41,10 @@ Atlas indexes: create them once in the Atlas UI with the JSON in [docs/atlas-ind
    re-reads / flags pages where they disagree. Invalid IBAN checksums also flag a page.
 5. Server: clean → **structure-aware chunking** → **bge-m3** embeddings (batched, parallel, retry, single
    model) → idempotent write to `chunks` (float32 BSON vectors).
+6. In parallel, the original file goes **straight from the browser to Vercel Blob** (private;
+   `docs/<userId>/<documentId>/…`) with a token from `POST /api/documents/[id]/file`, and is linked to the
+   document with `PUT` on the same route. `GET` checks ownership and redirects to a 5-minute signed URL (view); `GET ?download=1` streams it as an attachment under its original name.
+   Deleting a document or the account deletes its files (`src/lib/storage.ts`).
 
 **Chunking** (`src/lib/rag/chunk.ts`): structure-aware + recursive with overlap. Page-aware (citations; every
 page starts a new chunk, so the top of a page — IDs, letterheads — begins a chunk), section-aware (`Article (3)`,

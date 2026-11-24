@@ -3,6 +3,7 @@ import { handle, requireUser } from "@/lib/auth";
 import { collection } from "@/lib/db";
 import { ownedDocument, publicDocument } from "@/lib/docs";
 import { CHUNKS, DocumentModel } from "@/lib/models";
+import { deleteFiles, filePrefix } from "@/lib/storage";
 
 export const GET = handle(async (_req: Request, ctx: RouteContext<"/api/documents/[id]">) => {
   const user = await requireUser();
@@ -26,5 +27,7 @@ export const DELETE = handle(async (_req: Request, ctx: RouteContext<"/api/docum
   const doc = await ownedDocument(user, (await ctx.params).id);
   await (await collection(CHUNKS)).deleteMany({ documentId: doc._id, userId: user._id });
   await DocumentModel.deleteOne({ _id: doc._id });
+  // The whole folder, not just doc.file: also removes uploads whose confirmation never arrived (tab closed).
+  await deleteFiles(filePrefix(user._id, doc._id)).catch((e) => console.error("[storage] delete", String(doc._id), e.message));
   return NextResponse.json({ ok: true });
 });

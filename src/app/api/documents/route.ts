@@ -5,6 +5,8 @@ import { checkUpload } from "@/lib/limits";
 import { DocumentModel, type DocumentDoc } from "@/lib/models";
 import { backfillEmbeddings } from "@/lib/rag/ingest";
 import { ensureRegularIndexes, ensureSearchIndexes } from "@/lib/rag/store";
+import { fileStorageEnabled, filePrefix } from "@/lib/storage";
+import type { Types } from "mongoose";
 
 export const maxDuration = 60;
 
@@ -48,9 +50,11 @@ export const POST = handle(async (req: Request) => {
   });
   await g._indexesReady;
 
+  // storagePrefix → the browser also uploads the original file there (straight to Vercel Blob, see lib/storage.ts).
+  const storagePrefix = (docId: Types.ObjectId) => (fileStorageEnabled() ? filePrefix(user._id, docId) : null);
   const existing = await DocumentModel.findOne({ userId: user._id, hash }).lean<DocumentDoc>();
   if (existing) {
-    return NextResponse.json({ document: publicDocument(existing), donePages: existing.pagesDone ?? [], resumed: true });
+    return NextResponse.json({ document: publicDocument(existing), donePages: existing.pagesDone ?? [], resumed: true, storagePrefix: storagePrefix(existing._id) });
   }
   await checkUpload(user, { size: Number(size) || 0, pageCount });
   const doc = await DocumentModel.create({
@@ -62,5 +66,5 @@ export const POST = handle(async (req: Request) => {
     hash,
     pageCount,
   });
-  return NextResponse.json({ document: publicDocument(doc.toObject()), donePages: [], resumed: false }, { status: 201 });
+  return NextResponse.json({ document: publicDocument(doc.toObject()), donePages: [], resumed: false, storagePrefix: storagePrefix(doc._id) }, { status: 201 });
 });

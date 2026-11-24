@@ -45,6 +45,13 @@ const UserSchema = new Schema<UserDoc>(
 );
 
 // ── Documents (one per uploaded file) ────────────────────────────────────────
+/** The original uploaded file, kept in Vercel Blob (see lib/storage.ts). */
+export interface StoredFile {
+  pathname: string;
+  contentType?: string;
+  size?: number;
+  uploadedAt?: Date;
+}
 export interface DocumentDoc extends Stamps {
   userId: Id;
   title: string;
@@ -60,6 +67,7 @@ export interface DocumentDoc extends Stamps {
   ocr: { gemini: number; tesseract: number; textLayer: number; flagged: number[] };
   pendingEmbeddings: number;
   suggestions?: Partial<Record<"en" | "ar" | "ur", string[]>>; // starter questions this document can answer, per UI language
+  file?: StoredFile;
   error?: string;
 }
 const DocumentSchema = new Schema<DocumentDoc>(
@@ -83,6 +91,10 @@ const DocumentSchema = new Schema<DocumentDoc>(
     },
     pendingEmbeddings: { type: Number, default: 0 },
     suggestions: { type: Schema.Types.Mixed, default: undefined },
+    file: {
+      type: new Schema<StoredFile>({ pathname: String, contentType: String, size: Number, uploadedAt: Date }, { _id: false }),
+      default: undefined,
+    },
     error: String,
   },
   { timestamps: true },

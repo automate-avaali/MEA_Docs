@@ -6,11 +6,12 @@
 //   • a sample of scanned pages is also read by Tesseract → server compares engines (catches bad OCR)
 //   • bounded concurrency + backpressure: memory stays flat on 5,000-page files
 //   • resumable: the server remembers finished pages by file hash; re-uploading continues where it stopped
+//   • the original file is kept: it goes straight to Vercel Blob (private) while the pages are being indexed
 
 import type { PDFDocument as PdfLibDoc } from "pdf-lib";
 import { itemsToText, textLayerUsable } from "./pdf-text";
 
-export type Stage = "hashing" | "reading" | "ocr" | "tesseract" | "indexing" | "finishing" | "done" | "failed";
+export type Stage = "hashing" | "reading" | "ocr" | "tesseract" | "indexing" | "storing" | "finishing" | "done" | "failed";
 export type Progress = {
   stage: Stage;
   done: number;
@@ -19,6 +20,7 @@ export type Progress = {
   resumed?: number;
   quota?: boolean;
   flagged: number;
+  fileNotSaved?: boolean; // indexed fine, but the original file could not be stored (re-upload to retry)
   errorCode?: string;
 };
 
@@ -184,9 +186,14 @@ export async function ingestFile(
       body: JSON.stringify({ title: file.name.replace(/\.[^.]+$/, ""), fileName: file.name, mimeType: file.type, size: file.size, hash, pageCount: total }),
     }, signal);
     if (reg.status >= 400) throw new IngestError(String(reg.data.code ?? "server_error"));
-    const docId = (reg.data.document as { id: string }).id;
+    const regDoc = reg.data.document as { id: string; hasFile?: boolean };
+    const docId = regDoc.id;
     const done = new Set<number>((reg.data.donePages as number[]) ?? []);
     emit({ docId, done: done.size, resumed: reg.data.resumed ? done.size : undefined });
+
+    // ── Keep the original file (runs alongside indexing; never fails the upload) ──
+    const storagePrefix = reg.data.storagePrefix as string | null | undefined;
+    const storing = storagePrefix && !regDoc.hasFile ? storeOriginal(file, docId, storagePrefix, signal) : null;
 
     const batchUrl = `/api/documents/${docId}/batch`;
     const ack = (r: { data: Record<string, unknown> }, pages: number[]) => {
@@ -304,6 +311,10 @@ export async function ingestFile(
     }
 
     // ── Finish ──
+    if (storing) {
+      emit({ stage: "storing" });
+      if (!(await storing)) emit({ fileNotSaved: true });
+    }
     emit({ stage: "finishing" });
     const fin = await request(`/api/documents/${docId}/complete`, { method: "POST" }, signal);
     if (fin.status >= 400) throw new IngestError(String(fin.data.code ?? "server_error"));
@@ -321,6 +332,60 @@ export async function ingestFile(
     emit({ stage: "failed", errorCode: code });
     return progress;
   }
+}
+
+const MULTIPART_BYTES = 32 * 1024 * 1024; // bigger files go up in parallel parts, each retried on its own
+
+/** Blob pathnames stay ASCII; the real file name is kept on the document record. */
+function blobName(name: string) {
+  const ext = (name.match(/\.[a-z0-9]{1,8}$/i)?.[0] ?? "").toLowerCase();
+  const base = name
+    .slice(0, name.length - ext.length)
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "") // é → e
+    .replace(/[^\w.-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^[_.-]+|[_.-]+$/g, "")
+    .slice(0, 80);
+  return (/[a-z0-9]/i.test(base) ? base : "document") + ext;
+}
+
+/**
+ * Uploads the original file straight to Vercel Blob (the server only hands out a token for this document's
+ * folder), then tells the server where it landed. Resolves false instead of throwing: indexing already worked.
+ */
+async function storeOriginal(file: File, docId: string, prefix: string, signal?: AbortSignal): Promise<boolean> {
+  let pathname = "";
+  for (let attempt = 1; !pathname; attempt++) {
+    try {
+      const { upload } = await import("@vercel/blob/client");
+      const blob = await upload(prefix + blobName(file.name), file, {
+        access: "private",
+        handleUploadUrl: `/api/documents/${docId}/file`,
+        contentType: file.type || undefined,
+        multipart: file.size > MULTIPART_BYTES,
+        abortSignal: signal,
+      });
+      pathname = blob.pathname;
+    } catch (e) {
+      console.warn(`[ingest] storing the original file failed (attempt ${attempt})`, e);
+      if (signal?.aborted || attempt >= 2) return false;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+  try {
+    // request() already retries 5xx; a 4xx here won't be fixed by uploading again.
+    const r = await request(
+      `/api/documents/${docId}/file`,
+      { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pathname }) },
+      signal,
+    );
+    if (r.status < 400) return true;
+    console.warn("[ingest] file confirm failed", r.status, r.data.code);
+  } catch (e) {
+    console.warn("[ingest] file confirm failed", e);
+  }
+  return false;
 }
 
 async function rasterizeToPdf(canvas: HTMLCanvasElement) {
