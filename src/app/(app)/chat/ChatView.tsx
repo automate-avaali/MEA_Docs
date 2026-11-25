@@ -12,26 +12,20 @@ import { useT } from "@/i18n/client";
 import { LOCALE_META } from "@/i18n/config";
 import { Dropdown } from "@/components/Dropdown";
 import { detectLang, isRtl } from "@/lib/text/arabic";
+import { buildReferences, linkCitations, renumberPlain, type Reference, type Source } from "@/lib/citations";
+import { CiteChip, ReferenceList } from "./Citations";
+import { SourceViewer } from "./SourceViewer";
 
-type Source = { n: number; documentId: string; title: string; page: number; section: string; snippet: string; score: number };
 type Msg = { id?: string; role: "user" | "assistant"; content: string; lang?: string; sources?: Source[]; issues?: string[]; timings?: Record<string, number> | null; pending?: "search" | "write" };
 type Usage = { used: { questions: number; chats: number }; resetsAt: string };
 type ConvoItem = { id: string; title: string; documentIds: string[]; updatedAt: string };
+/** What the source viewer shows: one answer's references, the selected one, and the answer (for highlights). */
+type Viewer = { msgKey: string; refs: Reference[]; index: number; answer: string };
 
 const NOT_FOUND_LINE = /\n*\s*(I couldn't find this in your documents\.|لم أجد هذه المعلومة في مستنداتك\.|مجھے یہ معلومات آپ کی دستاویزات میں نہیں ملی۔)\s*$/;
+const NOT_FOUND_ONLY = /^\s*(I couldn't find this in your documents\.|لم أجد هذه المعلومة في مستنداتك\.|مجھے یہ معلومات آپ کی دستاویزات میں نہیں ملی۔)\s*$/;
 
 const dirFor = (text: string, fallback: string) => (isRtl(detectLang(text, fallback as "en")) ? "rtl" : "ltr");
-
-/** Source previews: Markdown tables → readable "cell · cell" rows, no separator lines or tags. */
-const cleanSnippet = (s: string) =>
-  s
-    .split("\n")
-    .filter((l) => !/^\s*\|?\s*:?-{2,}/.test(l))
-    .map((l) => (/^\s*\|/.test(l) ? l.replace(/^\s*\||\|\s*$/g, "").split("|").map((c) => c.trim()).filter(Boolean).join(" · ") : l))
-    .join("\n")
-    .replace(/<br\s*\/?>/gi, " / ")
-    .replace(/\*\*/g, "")
-    .trim();
 
 export function ChatView() {
   const { t, tError, messages, locale } = useT();
@@ -51,6 +45,8 @@ export function ChatView() {
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [viewer, setViewer] = useState<Viewer | null>(null);
+  const closeViewer = useCallback(() => setViewer(null), []);
   const scroller = useRef<HTMLDivElement>(null);
   const activeConvo = useRef<string | null>(convoId);
 
@@ -83,8 +79,10 @@ export function ChatView() {
     if (!convoId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reset view when leaving a conversation
       setMsgs([]);
+      setViewer(null); // the open source belonged to the previous conversation
       return;
     }
+    setViewer(null);
     setMsgs(null);
     api<{ conversation: { documentIds: string[] }; messages: Msg[] }>(`/api/conversations/${convoId}`)
       .then((d) => {
@@ -158,6 +156,7 @@ export function ChatView() {
 
   function newChat() {
     activeConvo.current = null;
+    setViewer(null);
     setMsgs([]);
     setHistoryOpen(false);
     router.push("/chat");
@@ -193,7 +192,7 @@ export function ChatView() {
   return (
     <div className="-mt-2 flex h-[calc(100dvh-150px)] min-h-[480px] gap-6 lg:h-[calc(100dvh-120px)]">
       {/* History (desktop column / mobile drawer) */}
-      <aside className={cn("w-64 shrink-0 flex-col", historyOpen ? "fixed inset-0 z-50 flex bg-bg p-4" : "hidden xl:flex")}>
+      <aside className={cn("w-64 shrink-0 flex-col", historyOpen ? "fixed inset-0 z-50 flex bg-bg p-4" : viewer ? "hidden" : "hidden xl:flex")}>
         <div className="mb-3 flex items-center justify-between">
           <Tag>{t("chat.history")}</Tag>
           {historyOpen && (
@@ -332,7 +331,14 @@ export function ChatView() {
                     </div>
                   </div>
                 ) : (
-                  <AssistantMessage key={m.id ?? i} m={m} streaming={streaming && i === msgs.length - 1} />
+                  <AssistantMessage
+                    key={m.id ?? i}
+                    m={m}
+                    msgKey={m.id ?? `live-${i}`}
+                    streaming={streaming && i === msgs.length - 1}
+                    activeRef={viewer && viewer.msgKey === (m.id ?? `live-${i}`) ? viewer.index : null}
+                    onOpenSource={(refs, index, answer) => setViewer({ msgKey: m.id ?? `live-${i}`, refs, index, answer })}
+                  />
                 ),
               )}
             </div>
@@ -367,39 +373,60 @@ export function ChatView() {
           </button>
         </form>
       </div>
+
+      {/* Source viewer: side pane on large screens, full screen on small ones */}
+      {viewer && (
+        <aside className="fixed inset-0 z-50 flex bg-bg lg:static lg:z-auto lg:w-[min(46%,640px)] lg:shrink-0 lg:bg-transparent" aria-label={t("viewer.title")}>
+          <SourceViewer
+            refs={viewer.refs}
+            index={viewer.index}
+            answer={viewer.answer}
+            onIndex={(index) => setViewer((v) => (v ? { ...v, index } : v))}
+            onClose={closeViewer}
+          />
+        </aside>
+      )}
     </div>
   );
 }
 
-function AssistantMessage({ m, streaming }: { m: Msg; streaming: boolean }) {
+function AssistantMessage({
+  m,
+  msgKey,
+  streaming,
+  activeRef,
+  onOpenSource,
+}: {
+  m: Msg;
+  msgKey: string;
+  streaming: boolean;
+  activeRef: number | null;
+  onOpenSource: (refs: Reference[], index: number, answer: string) => void;
+}) {
   const { t, locale } = useT();
-  const [openSources, setOpenSources] = useState(false);
-  const [highlight, setHighlight] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
   const dir = dirFor(m.content || "x", m.lang ?? locale);
 
-  // [n] → clickable citation chips (only for numbers that match a source).
-  const md = useMemo(() => {
-    const max = m.sources?.length ?? 0;
-    const titleOf = (n: string) => m.sources?.[Number(n) - 1]?.title;
-    let text = m.content;
-    // A real answer followed by the stock "not found" line → drop that line.
-    const rest = text.replace(NOT_FOUND_LINE, "").trim();
-    if (rest && rest !== text.trim()) text = rest;
-    return text
-      .replace(/\b(?:document|source)\s*\[(\d{1,2})\]|(?:المستند|المصدر|مصدر)\s*\[(\d{1,2})\]/gi, (all, a, b) => (titleOf(a ?? b) ? `${titleOf(a ?? b)} [${a ?? b}]` : all)) // "Document [3]" → its name
-      .replace(/((?:\[\d{1,2}\]){3})(?:\[\d{1,2}\])+/g, "$1") // at most 3 citations in a row
-      .replace(/\[(\d{1,2})\]/g, (all, n) => (Number(n) >= 1 && Number(n) <= max ? `[${n}](#src-${n})` : all));
+  // The answer as shown: stock "not found" tail dropped, "Document [3]" → its name, at most 3 citations in a row.
+  const text = useMemo(() => {
+    const titleOf = (n: string) => m.sources?.find((s) => s.n === Number(n))?.title;
+    let s = m.content;
+    const rest = s.replace(NOT_FOUND_LINE, "").trim();
+    if (rest && rest !== s.trim()) s = rest;
+    return s
+      .replace(/\b(?:document|source)\s*\[(\d{1,2})\]|(?:المستند|المصدر|مصدر)\s*\[(\d{1,2})\]/gi, (all, a, b) => (titleOf(a ?? b) ? `${titleOf(a ?? b)} [${a ?? b}]` : all))
+      .replace(/((?:\[\d{1,2}\]){3})(?:\[\d{1,2}\])+/g, "$1");
   }, [m.content, m.sources]);
 
-  const showSource = (n: number) => {
-    setOpenSources(true);
-    setHighlight(n);
-    setTimeout(() => document.getElementById(`src-${m.id ?? "live"}-${n}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 50);
-  };
+  // The model saw up to 20 sources; the cited ones become references 1, 2, 3… in order of first appearance
+  // (citations of the same page of the same document merge). An answer without citations lists the top 3.
+  const notFound = NOT_FOUND_ONLY.test(m.content);
+  const { refs, display } = useMemo(() => buildReferences(text, m.sources, { fallback: !streaming && !notFound }), [text, m.sources, streaming, notFound]);
+  const md = useMemo(() => linkCitations(text, display), [text, display]);
+  const open = (i: number) => onOpenSource(refs, i, text);
 
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-3" data-msg={msgKey}>
       <div className="hidden size-8 shrink-0 place-items-center rounded-full bg-coral font-mono text-sm font-semibold text-white sm:grid">m</div>
       <div className="min-w-0 flex-1 sm:max-w-[92%]">
         {m.pending ? (
@@ -418,12 +445,8 @@ function AssistantMessage({ m, streaming }: { m: Msg; streaming: boolean }) {
               components={{
                 a: ({ href, children }) => {
                   const cite = href?.match(/^#src-(\d+)$/);
-                  if (cite)
-                    return (
-                      <button type="button" className="cite" onClick={() => showSource(Number(cite[1]))}>
-                        {cite[1]}
-                      </button>
-                    );
+                  const k = cite ? display.get(Number(cite[1])) : undefined;
+                  if (k && refs[k - 1]) return <CiteChip refData={refs[k - 1]} onOpen={() => open(k - 1)} />;
                   return (
                     <a href={href} target="_blank" rel="noreferrer">
                       {children}
@@ -450,53 +473,32 @@ function AssistantMessage({ m, streaming }: { m: Msg; streaming: boolean }) {
             <ul className="mt-1 list-disc ps-5">
               {m.issues.map((iss) => {
                 const [kind, v] = iss.split(":");
-                return <li key={iss}>{t(`chat.issue.${kind}`, { v: v ?? "" })}</li>;
+                // A citation issue names the model's number; show the number the user sees.
+                const shown = kind === "citation" && display.get(Number(v)) ? String(display.get(Number(v))) : (v ?? "");
+                return <li key={iss}>{t(`chat.issue.${kind}`, { v: shown })}</li>;
               })}
             </ul>
           </div>
         )}
 
-        {m.sources && m.sources.length > 0 && (
-          <div className="mt-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <button onClick={() => setOpenSources((o) => !o)} className="inline-flex cursor-pointer items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted hover:text-ink">
-                <FileText className="size-3.5" /> {t("chat.sources")} · {m.sources.length}
-                <ChevronDown className={cn("size-3.5 transition", openSources && "rotate-180")} />
-              </button>
-              {!streaming && m.content && (
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(m.content).catch(() => {});
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
-                  }}
-                  className="inline-flex cursor-pointer items-center gap-1 text-xs text-muted hover:text-ink"
-                >
-                  {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} {copied ? t("chat.copied") : t("chat.copy")}
-                </button>
-              )}
-              {m.timings?.total != null && (
-                <span className="font-mono text-[11px] text-muted">
-                  {t("chat.timing", { r: fmtMs(m.timings.retrieval), f: fmtMs(m.timings.firstToken), t: fmtMs(m.timings.total) })}
-                </span>
-              )}
-            </div>
-            {openSources && (
-              <div className="mt-2 grid gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-2">
-                {m.sources.map((s) => (
-                  <div key={s.n} id={`src-${m.id ?? "live"}-${s.n}`} className={cn("bg-surface p-3 text-sm transition", highlight === s.n && "bg-cream")}>
-                    <div className="flex items-center gap-2">
-                      <span className="cite !m-0 shrink-0" style={{ fontSize: "11px" }}>
-                        {s.n}
-                      </span>
-                      <span className="bidi min-w-0 flex-1 truncate font-medium text-ink">{s.title}</span>
-                      <span className="shrink-0 font-mono text-[11px] text-muted">{t("chat.sourcePage", { n: s.page })}</span>
-                    </div>
-                    {s.section && <div className="bidi mt-1 truncate text-xs font-medium text-ink-2">{s.section}</div>}
-                    <p className="bidi mt-1 line-clamp-4 whitespace-pre-line text-xs leading-relaxed text-ink-2">{cleanSnippet(s.snippet)}</p>
-                  </div>
-                ))}
-              </div>
+        <ReferenceList refs={refs} active={activeRef} onOpen={open} />
+
+        {!streaming && m.content && (
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(renumberPlain(text, display)).catch(() => {});
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+              className="inline-flex cursor-pointer items-center gap-1 text-xs text-muted hover:text-ink"
+            >
+              {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} {copied ? t("chat.copied") : t("chat.copy")}
+            </button>
+            {m.timings?.total != null && (
+              <span className="font-mono text-[11px] text-muted">
+                {t("chat.timing", { r: fmtMs(m.timings.retrieval), f: fmtMs(m.timings.firstToken), t: fmtMs(m.timings.total) })}
+              </span>
             )}
           </div>
         )}

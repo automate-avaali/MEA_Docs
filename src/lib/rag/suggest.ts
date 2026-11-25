@@ -2,7 +2,7 @@ import "server-only";
 import type { Types } from "mongoose";
 import { collection } from "../db";
 import { CHUNKS, DocumentModel, type DocumentDoc } from "../models";
-import { completeChat } from "../ai/fanar";
+import { completeChat } from "../ai/llm";
 import { annotateDigits, searchNormalize } from "../text/arabic";
 
 // Starter questions for the chat welcome screen, written from the document itself so every suggestion is
@@ -52,7 +52,7 @@ export async function documentSuggestions(doc: Pick<DocumentDoc, "_id" | "title"
       },
       { role: "user", content: `Document: ${doc.title}\n\n${await outline(doc._id)}` },
     ],
-    { maxTokens: 300, signal: AbortSignal.timeout(15_000) },
+    { maxTokens: 300, timeoutMs: 15_000 },
   );
   const questions = [...new Set(parseList(text).map((q) => q.trim()).filter((q) => q.length >= 8 && q.length <= 140))].slice(0, 4);
   if (questions.length >= 2) await DocumentModel.updateOne({ _id: doc._id }, { $set: { [`suggestions.${locale}`]: questions } });

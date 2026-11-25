@@ -23,7 +23,8 @@ Atlas indexes: create them once in the Atlas UI with the JSON in [docs/atlas-ind
 | `HF_TOKEN` (fine-grained, *Inference*) | `BAAI/bge-m3` embeddings | small monthly credit |
 | `EMBED_URL` (optional) | Your own TEI endpoint for bulk ingestion (same model) | — |
 | `JINA_API_KEY` | `jina-reranker-v3.5` | 10M tokens (one-time) |
-| `FANAR_API_KEY`, `FANAR_BASE_URL`, `FANAR_MODEL` | Answers (`Fanar-C-2-27B`) — point `FANAR_BASE_URL` at your own vLLM to self-host | 50 req/min |
+| `MISTRAL_ENABLED`, `MISTRAL_API_KEY`, `MISTRAL_MODEL` | `MISTRAL_ENABLED=true` → every LLM call (answers, question rewriting, starter questions) goes to Mistral (`mistral-small-latest`) first, and to Fanar if Mistral fails. Unset/false → Fanar only | key-dependent (this key: 100 req/min, 100K tokens/min) |
+| `FANAR_API_KEY`, `FANAR_BASE_URL`, `FANAR_MODEL` | Answers (`Fanar-C-2-27B`), or the fallback when Mistral is enabled — point `FANAR_BASE_URL` at your own vLLM to self-host | 50 req/min |
 | `SMTP_*` (optional) | Password-reset emails. Unset → link shown on screen in dev | — |
 | `ATLAS_AUTO_INDEXES` | `false` = indexes managed manually in Atlas | — |
 | `BLOB_READ_WRITE_TOKEN` (optional) | Keeps the original uploaded files in a **private** Vercel Blob store. When connecting the Blob store to the project, tick **Add a read-write token env var to this connection** (browser uploads need it; keep the prefix `BLOB`). For local dev, put a read-write token in `.env.local`. Unset → files are indexed but not kept | Hobby plan allowance |
@@ -53,7 +54,14 @@ from their header row, ~1,400 chars, recursive splitting paragraph → line → 
 overlap, very short lines (a lone "ID: ١٠٤١٩٠") never dropped, contextual header (`document · page · section`)
 embedded.
 
-**Query understanding** (`src/lib/rag/rewrite.ts`): every message is first rewritten by Fanar with the thread
+**LLM** (`src/lib/ai/llm.ts`): one interface (`src/lib/ai/provider.ts`), two providers — `mistral.ts` and
+`fanar.ts`. With `MISTRAL_ENABLED=true` each call tries Mistral first; on an error, a timeout or no first word
+within 20 s, the same request goes to Fanar (a stream only falls back before its first word). A provider that is
+down is skipped for 60 s; a rate limit (429) only falls back for that call. Prompts are sized for the smallest
+window in the chain (Fanar's 16K), so a fallback always fits. Each answer stores which model wrote it
+(`messages.llm`, e.g. `mistral/mistral-small-latest`).
+
+**Query understanding** (`src/lib/rag/rewrite.ts`): every message is first rewritten by the LLM with the thread
 (last 10 Q&A pairs): connected follow-ups become self-contained questions, bilingual (English + Arabic)
 keyword queries are generated, page references ("top right of the first page") become a page filter, small talk
 ("my name is Suhas") is answered from the conversation, and unclear fragments ("ID #") get one clarifying
@@ -62,11 +70,11 @@ question. Falls back to the raw question + a fixed EN↔AR contract-term expansi
 **Retrieval** (`src/lib/rag/retrieve.ts`): for each query, sparse BM25 (Atlas Search, `lucene.arabic` + English,
 Arabic normalisation, Arabic-Indic digits → 0-9) **top 30** and dense bge-m3 (`$vectorSearch`) **top 30** in
 parallel (+ the chunks of any page the user pointed at) → **Reciprocal Rank Fusion** → **top 40** → **Jina
-cross-encoder** → **top 20**, packed into Fanar's 16K-token window best-first next to the thread.
+cross-encoder** → **top 20**, packed into the LLM's 16K-token window best-first next to the thread.
 
 **Answering** (`src/lib/rag/answer.ts`, `/api/chat`): streams NDJSON — sources appear first, then the answer.
 The question's language is detected (`detectLang`: script ratio + Urdu letters, 13/13 in tests); the first
-characters of the answer are language-checked and the request retried if Fanar drifts into another language.
+characters of the answer are language-checked and the request retried if the model drifts into another language.
 After the answer, dates (Gregorian + Hijri), numbers and `[n]` citations are verified against the sources and
 shown as "please verify" notes if they don't match.
 

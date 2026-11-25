@@ -1,5 +1,5 @@
 import "server-only";
-import { completeChat } from "../ai/fanar";
+import { completeChat } from "../ai/llm";
 import { searchNormalize } from "../text/arabic";
 
 // Query understanding — runs before retrieval on EVERY message:
@@ -19,6 +19,8 @@ export type Rewrite = {
   pages: number[];
   reply: string;
   source: "llm" | "fallback";
+  /** Which LLM did the rewrite, e.g. "mistral/mistral-small-latest" (unset on fallback). */
+  llm?: string;
   ms: number;
 };
 export type Turn = { role: "user" | "assistant"; content: string };
@@ -112,12 +114,12 @@ export async function rewriteQuery(message: string, history: Turn[]): Promise<Re
     ms: Date.now() - t0,
   });
   try {
-    const { text } = await completeChat(
+    const { text, provider: llm } = await completeChat(
       [
         { role: "system", content: SYSTEM },
         { role: "user", content: `Conversation:\n${threadText(history)}\n\nLatest: ${message}` },
       ],
-      { maxTokens: 350, signal: AbortSignal.timeout(8_000) },
+      { maxTokens: 350, timeoutMs: 8_000 },
     );
     const r = parse(text);
     if (!r || !["search", "chat", "clarify"].includes(String(r.intent))) return fallback();
@@ -132,7 +134,7 @@ export async function rewriteQuery(message: string, history: Turn[]): Promise<Re
       if (!r.standalone || String(r.standalone).trim() === message.trim()) r.standalone = `${message} (context: ${lastUser.slice(0, 200)})`;
     }
     if (intent !== "search" && reply) {
-      return { intent, standalone: String(r.standalone || message), queries: [], pages: [], reply, source: "llm", ms: Date.now() - t0 };
+      return { intent, standalone: String(r.standalone || message), queries: [], pages: [], reply, source: "llm", llm, ms: Date.now() - t0 };
     }
     const standalone = typeof r.standalone === "string" && r.standalone.trim() ? r.standalone.trim() : message;
     const llmQueries = Array.isArray(r.queries) ? r.queries.filter((q): q is string => typeof q === "string").slice(0, 4) : [];
@@ -146,6 +148,7 @@ export async function rewriteQuery(message: string, history: Turn[]): Promise<Re
       pages,
       reply: "",
       source: "llm",
+      llm,
       ms: Date.now() - t0,
     };
   } catch (e) {

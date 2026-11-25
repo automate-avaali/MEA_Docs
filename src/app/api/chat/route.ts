@@ -9,7 +9,7 @@ import { rewriteQuery } from "@/lib/rag/rewrite";
 import { searchNormalize } from "@/lib/text/arabic";
 import { detectLang, type Lang } from "@/lib/text/arabic";
 
-export const maxDuration = 300; // long table answers can take Fanar ~1 min (+ automatic continuation)
+export const maxDuration = 300; // long table answers can take the LLM ~1 min (+ automatic continuation, + fallback)
 
 // Streams NDJSON events so the UI can show progress immediately:
 //   {t:"meta"} → {t:"sources"} (right after retrieval, before the LLM starts) → {t:"delta"}… → {t:"verify"} → {t:"done"}
@@ -54,9 +54,10 @@ export const POST = handle(async (req: Request) => {
       const send = (o: object) => controller.enqueue(enc.encode(JSON.stringify(o) + "\n"));
       let full = "";
       let issues: string[] = [];
-      let sources: { n: number; documentId: Types.ObjectId; title: string; page: number; section: string; snippet: string; score: number }[] = [];
+      let sources: { n: number; documentId: Types.ObjectId; chunkId: Types.ObjectId; title: string; page: number; pageEnd: number; section: string; snippet: string; score: number }[] = [];
       const timings: Record<string, number> = {};
       let query: Record<string, unknown> | undefined;
+      let llm: string | undefined; // which model wrote the answer (Mistral, or Fanar as the fallback)
       try {
         send({ t: "meta", conversationId: String(convo!._id), lang });
         const scope = { userId: user._id, documentIds: docIds };
@@ -65,11 +66,12 @@ export const POST = handle(async (req: Request) => {
         const rawLists = gatherLists({ queries: [question], ...scope, timings });
         const rw = await rewriteQuery(question, turns);
         timings.rewrite = rw.ms;
-        query = { intent: rw.intent, standalone: rw.standalone, queries: rw.queries, pages: rw.pages, source: rw.source };
+        query = { intent: rw.intent, standalone: rw.standalone, queries: rw.queries, pages: rw.pages, source: rw.source, llm: rw.llm };
 
         if (rw.intent !== "search") {
           // Small talk / clarifying question: answered from the conversation, no document search.
           full = rw.reply;
+          llm = rw.llm;
           send({ t: "sources", sources: [], mode: rw.intent });
           send({ t: "delta", d: full });
         } else {
@@ -79,19 +81,23 @@ export const POST = handle(async (req: Request) => {
           const r = await fuseAndRerank({ lists: [...(await rawLists), ...more], rerankQuery: rw.standalone, timings });
           timings.retrieval = Date.now() - t0;
 
-          // 3. Keep the thread + as many top sources as fit Fanar's 16K-token window.
+          // 3. Keep the thread + as many top sources as fit the LLM window (16K while Fanar is in the chain).
+          // All of them go to the model (and to the browser, so every [n] it cites resolves); the UI lists the
+          // ones the answer actually cites, top 3 first. chunkId → the source viewer loads the full passage on demand.
           const thread = trimHistory(turns);
           const hits = fitSources(r.hits, { lang, history: thread, question: `${question}\n${rw.standalone}` });
           sources = hits.map((h, i) => ({
             n: i + 1,
             documentId: h.documentId,
+            chunkId: h._id,
             title: h.docTitle,
             page: h.page,
+            pageEnd: h.pageEnd || h.page,
             section: h.section,
             snippet: h.content.slice(0, 600),
             score: Math.round(h.score * 1000) / 1000,
           }));
-          send({ t: "sources", sources: sources.map((s) => ({ ...s, documentId: String(s.documentId) })), mode: r.mode });
+          send({ t: "sources", sources: sources.map((s) => ({ ...s, documentId: String(s.documentId), chunkId: String(s.chunkId) })), mode: r.mode });
 
           if (!hits.length) {
             full = NOT_FOUND[lang];
@@ -104,6 +110,7 @@ export const POST = handle(async (req: Request) => {
                 send(ev);
               } else if (ev.t === "done") {
                 full = ev.text;
+                llm = ev.llm || undefined;
                 Object.assign(timings, { firstToken: (timings.retrieval ?? 0) + ev.firstTokenMs, llm: ev.llmMs, retriedLanguage: ev.retried ? 1 : 0 });
               }
             }
@@ -120,9 +127,10 @@ export const POST = handle(async (req: Request) => {
           issues: issues.length ? issues : undefined,
           timings,
           query,
+          llm,
         });
         await Conversation.updateOne({ _id: convo!._id }, { $set: { updatedAt: new Date() } });
-        send({ t: "done", messageId: String(saved._id), timings });
+        send({ t: "done", messageId: String(saved._id), timings, llm });
       } catch (e) {
         console.error("[chat]", e);
         const code = /llm_/.test((e as Error).message) ? "llm_unavailable" : "server_error";

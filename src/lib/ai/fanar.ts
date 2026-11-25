@@ -1,16 +1,15 @@
 import "server-only";
+import type { ChatMsg, LlmProvider, StreamState } from "./provider";
 
 // Fanar-C-2-27B (QCRI, Qatar) through its OpenAI-compatible API. Set FANAR_BASE_URL to your own vLLM
 // server running QCRI/Fanar-2-27B-Instruct (Apache 2.0) to self-host — nothing else changes.
 // Benchmarked: ~2.1 s fixed server overhead + prompt time → first token ≈ 3.5–4 s for ~550 prompt tokens,
 // so the app keeps prompts small (top-8 chunks) and streams.
+// The app calls it through ../ai/llm.ts: the only LLM by default, the fallback when MISTRAL_ENABLED=true.
 
-export type ChatMsg = { role: "system" | "user" | "assistant"; content: string };
+export type { ChatMsg, StreamState };
 
 const base = () => (process.env.FANAR_BASE_URL || "https://api.fanar.qa/v1").replace(/\/$/, "");
-
-/** `state.finishReason` is "length" when the answer hit max_tokens — the caller then asks it to continue. */
-export type StreamState = { finishReason: string | null };
 
 export async function streamChat(messages: ChatMsg[], opts: { maxTokens?: number; signal?: AbortSignal; state?: StreamState } = {}) {
   const state = opts.state ?? { finishReason: null };
@@ -82,3 +81,12 @@ export async function completeChat(messages: ChatMsg[], opts: { maxTokens?: numb
 
 /** Fanar-C-2-27B accepts 16,000 tokens in total (prompt + answer). */
 export const CONTEXT_TOKENS = Number(process.env.FANAR_CONTEXT_TOKENS) || 16_000;
+
+export const fanar: LlmProvider = {
+  name: "fanar",
+  model: () => process.env.FANAR_MODEL || "Fanar-C-2-27B",
+  contextTokens: () => CONTEXT_TOKENS,
+  configured: () => Boolean(process.env.FANAR_API_KEY || process.env.FANAR_BASE_URL),
+  streamChat,
+  completeChat,
+};

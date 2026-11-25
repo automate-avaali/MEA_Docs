@@ -122,8 +122,10 @@ export interface SourceDoc {
   documentId: Id;
   title: string;
   page: number;
+  pageEnd?: number; // chunk spans page..pageEnd
+  chunkId?: Id; // full passage for the source viewer (GET /api/documents/[id]/passages)
   section: string;
-  snippet: string;
+  snippet: string; // first 600 chars of the chunk (reference cards, hover preview)
   score: number;
 }
 export interface MessageDoc {
@@ -137,10 +139,11 @@ export interface MessageDoc {
   issues?: string[];
   timings?: Record<string, number>;
   query?: Record<string, unknown>; // how the question was understood (intent, standalone, search queries, pages)
+  llm?: string; // model that wrote the answer, e.g. "mistral/mistral-small-latest" or "fanar/Fanar-C-2-27B"
   createdAt: Date;
 }
 const SourceSchema = new Schema<SourceDoc>(
-  { n: Number, documentId: Schema.Types.ObjectId, title: String, page: Number, section: String, snippet: String, score: Number },
+  { n: Number, documentId: Schema.Types.ObjectId, chunkId: Schema.Types.ObjectId, title: String, page: Number, pageEnd: Number, section: String, snippet: String, score: Number },
   { _id: false },
 );
 const MessageSchema = new Schema<MessageDoc>(
@@ -154,6 +157,7 @@ const MessageSchema = new Schema<MessageDoc>(
     issues: { type: [String], default: undefined },
     timings: { type: Schema.Types.Mixed },
     query: { type: Schema.Types.Mixed },
+    llm: String,
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );

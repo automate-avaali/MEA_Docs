@@ -1,5 +1,5 @@
 import "server-only";
-import { CONTEXT_TOKENS, streamChat, type ChatMsg, type StreamState } from "../ai/fanar";
+import { contextTokens, streamChat, type ChatMsg, type StreamState } from "../ai/llm";
 import { normalizeTables } from "../text/tables";
 import { annotateDigits, detectLang, type Lang } from "../text/arabic";
 import { verifyAnswer } from "../text/verify";
@@ -41,10 +41,11 @@ export function formatSources(hits: Hit[]) {
 }
 
 // ── Token budget ────────────────────────────────────────────────────────────────────────────────────────
-// Fanar-C-2-27B takes 16,000 tokens in total (prompt + answer). The prompt gets the rules, up to the last
-// 10 Q&A pairs of the thread, and as many of the 20 reranked sources as fit (best first); the answer keeps
-// at least 3,000 tokens (longer answers continue automatically). Chars-per-token calibrated against Fanar's
-// own token counts on the OCR'd contracts (scripts/eval-chat.mjs prints the check).
+// The budget is the LLM chain's smallest window (../ai/llm.ts): Fanar-C-2-27B's 16,000 tokens in total (prompt +
+// answer) whenever Fanar is in the chain, so a Mistral request that falls back to Fanar still fits. The prompt
+// gets the rules, up to the last 10 Q&A pairs of the thread, and as many of the 20 reranked sources as fit (best
+// first); the answer keeps at least 3,000 tokens (longer answers continue automatically). Chars-per-token
+// calibrated against Fanar's own token counts on the OCR'd contracts (scripts/eval-chat.mjs prints the check).
 const ARABIC = /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/g;
 const AR_CHARS_PER_TOKEN = 2.6;
 const OTHER_CHARS_PER_TOKEN = 3.4;
@@ -76,7 +77,7 @@ export function trimHistory(history: ChatMsg[]) {
 /** Keeps the best-ranked sources that fit in the prompt next to the rules, thread and question. */
 export function fitSources(hits: Hit[], opts: { lang: Lang; history: ChatMsg[]; question: string }) {
   const fixed = estimateTokens(systemPrompt(opts.lang)) + opts.history.reduce((n, m) => n + estimateTokens(m.content) + 4, 0) + estimateTokens(opts.question) * 2 + 60;
-  let room = CONTEXT_TOKENS - ANSWER_RESERVE - SAFETY - fixed;
+  let room = contextTokens() - ANSWER_RESERVE - SAFETY - fixed;
   const kept: Hit[] = [];
   for (const h of hits) {
     const t = estimateTokens(normalizeTables(h.content)) + 30;
@@ -87,12 +88,13 @@ export function fitSources(hits: Hit[], opts: { lang: Lang; history: ChatMsg[]; 
   return kept;
 }
 
-const maxTokensFor = (messages: ChatMsg[]) => Math.min(4000, CONTEXT_TOKENS - SAFETY - messages.reduce((n, m) => n + estimateTokens(m.content) + 4, 0));
+const maxTokensFor = (messages: ChatMsg[]) => Math.min(4000, contextTokens() - SAFETY - messages.reduce((n, m) => n + estimateTokens(m.content) + 4, 0));
 
 export type AnswerEvent =
   | { t: "delta"; d: string }
   | { t: "verify"; issues: string[] }
-  | { t: "done"; text: string; firstTokenMs: number; llmMs: number; retried: boolean };
+  /** `llm`: who wrote the answer, e.g. "mistral/mistral-small-latest" ("a + b" if a continuation fell back). */
+  | { t: "done"; text: string; firstTokenMs: number; llmMs: number; retried: boolean; llm: string };
 
 /**
  * Streams the answer. The first ~80 characters are held back and language-checked: if the model drifted
@@ -113,13 +115,14 @@ export async function* answer(opts: { question: string; standalone?: string; lan
   let firstTokenMs = 0;
   let retried = false;
   const state: StreamState = { finishReason: null };
+  const used = new Set<string>();
   for (let attempt = 0; attempt < 2; attempt++) {
     const ctrl = new AbortController();
     const messages =
       attempt === 0
         ? base
         : [...base.slice(0, -1), { role: "user" as const, content: `${base[base.length - 1].content}\n\nRespond ONLY in ${LANG_NAME[opts.lang]}.` }];
-    const stream = await streamChat(messages, { state, maxTokens: maxTokensFor(messages), signal: AbortSignal.any([ctrl.signal, AbortSignal.timeout(240_000)]) });
+    const stream = await streamChat(messages, { state, maxTokens: maxTokensFor(messages), signal: ctrl.signal, timeoutMs: 240_000 });
     let held = "";
     let released = false;
     let wrongLanguage = false;
@@ -147,6 +150,7 @@ export async function* answer(opts: { question: string; standalone?: string; lan
       retried = true;
       continue;
     }
+    if (state.provider) used.add(state.provider);
     if (!released && held) yield { t: "delta", d: held };
     break;
   }
@@ -161,7 +165,8 @@ export async function* answer(opts: { question: string; standalone?: string; lan
     ];
     const room = maxTokensFor(contMessages);
     if (room < 400) break; // the context window is full
-    const cont = await streamChat(contMessages, { state, maxTokens: room, signal: AbortSignal.timeout(240_000) });
+    const cont = await streamChat(contMessages, { state, maxTokens: room, timeoutMs: 240_000 });
+    if (state.provider) used.add(state.provider);
     const glue = text.endsWith("\n") ? "" : "\n";
     let first = true;
     for await (const d of cont) {
@@ -174,5 +179,5 @@ export async function* answer(opts: { question: string; standalone?: string; lan
 
   const { issues } = verifyAnswer({ question: opts.question, answer: text, context, sourceCount: opts.hits.length, expectedLang: opts.lang });
   if (issues.length) yield { t: "verify", issues };
-  yield { t: "done", text, firstTokenMs, llmMs: Date.now() - t0, retried };
+  yield { t: "done", text, firstTokenMs, llmMs: Date.now() - t0, retried, llm: [...used].join(" + ") };
 }

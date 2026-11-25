@@ -10,6 +10,7 @@
 
 import type { PDFDocument as PdfLibDoc } from "pdf-lib";
 import { itemsToText, textLayerUsable } from "./pdf-text";
+import { loadPdfjs, pdfAssetOptions } from "../pdfjs";
 
 export type Stage = "hashing" | "reading" | "ocr" | "tesseract" | "indexing" | "storing" | "finishing" | "done" | "failed";
 export type Progress = {
@@ -113,11 +114,7 @@ function pseudoPages(text: string): string[] {
 }
 
 // ── pdf.js / pdf-lib / tesseract are loaded only when needed (keeps the app bundle small) ──
-async function pdfjs() {
-  const lib = await import("pdfjs-dist");
-  lib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-  return lib;
-}
+const pdfjs = loadPdfjs;
 
 type TessWorker = { recognize: (img: HTMLCanvasElement | Blob) => Promise<{ data: { text: string } }>; terminate: () => Promise<unknown> };
 let tessPromise: Promise<TessWorker> | null = null;
@@ -174,7 +171,8 @@ export async function ingestFile(
       textPages = pseudoPages(value);
     } else textPages = pseudoPages(new TextDecoder().decode(bytes));
 
-    const pdf = pdfBytes ? await (await pdfjs()).getDocument({ data: pdfBytes.slice() }).promise : null;
+    // pdfAssetOptions: without its decoders pdf.js renders CCITT/JBIG2 scans blank → Tesseract would read empty pages.
+    const pdf = pdfBytes ? await (await pdfjs()).getDocument({ data: pdfBytes.slice(), ...pdfAssetOptions() }).promise : null;
     const total = pdf ? pdf.numPages : textPages!.length;
     if (limits?.maxPagesPerDoc != null && total > limits.maxPagesPerDoc) throw new IngestError("page_limit");
     emit({ total, stage: "reading" });

@@ -8,7 +8,8 @@ import { deleteFile, fileStorageEnabled, filePrefix, readFile, signedFileUrl, st
 // The original file of a document (see lib/storage.ts):
 //   POST → upload token for the browser (@vercel/blob/client `upload()` calls this)
 //   PUT  → the browser reports the finished upload; verified, then linked to the document
-//   GET  → opens the file in the browser (owner only); ?download=1 → saves it under its original name
+//   GET  → opens the file in the browser (owner only); ?download=1 → saves it under its original name;
+//          ?as=url → signed URL as JSON (source viewer in chat)
 
 // Downloads stream through this function (streamed responses aren't capped at 4.5 MB on Vercel); the time
 // limit covers the whole transfer, so allow the Hobby maximum.
@@ -78,7 +79,18 @@ export const GET = handle(async (req: Request, ctx: RouteContext<"/api/documents
   const user = await requireUser();
   const doc = await ownedDocument(user, (await ctx.params).id);
   if (!doc.file?.pathname || !fileStorageEnabled()) throw new HttpError(404, "file_not_stored");
-  const download = new URL(req.url).searchParams.has("download");
+  const params = new URL(req.url).searchParams;
+  const download = params.has("download");
+
+  // ?as=url → JSON with a signed URL, for the in-app source viewer (pdf.js / <img> load it straight from Blob,
+  // which allows cross-origin GETs). 15 minutes: the viewer downloads the file once and keeps it in memory.
+  if (params.get("as") === "url") {
+    const ttl = 15 * 60_000;
+    return NextResponse.json(
+      { url: await signedFileUrl(doc.file.pathname, ttl), contentType: doc.file.contentType ?? doc.mimeType ?? "", size: doc.file.size ?? doc.size ?? 0, expiresAt: Date.now() + ttl },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
 
   if (!download) {
     try {

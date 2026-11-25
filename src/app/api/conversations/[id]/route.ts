@@ -21,7 +21,7 @@ export const GET = handle(async (_req: Request, ctx: RouteContext<"/api/conversa
       role: m.role,
       content: m.content,
       lang: m.lang,
-      sources: (m.sources ?? []).map((s) => ({ ...s, documentId: String(s.documentId) })),
+      sources: (m.sources ?? []).map((s) => ({ ...s, documentId: String(s.documentId), chunkId: s.chunkId ? String(s.chunkId) : undefined })),
       issues: m.issues ?? [],
       timings: m.timings ?? null,
     })),
