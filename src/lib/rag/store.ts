@@ -6,7 +6,7 @@ import { EMBED_DIMS } from "../ai/embed";
 
 // Chunk documents:
 // { _id, userId, documentId, docTitle, page, pageEnd, section, content, searchText, isTable,
-//   lang, dates: [ISO], embedding: BinData(float32 vector) | missing, createdAt }
+//   lang, dates: [ISO], signatures?, unsigned?, stamps?, embedding: BinData(float32 vector) | missing, createdAt }
 
 export const VECTOR_INDEX = "chunk_vector";
 export const TEXT_INDEX = "chunk_text";
@@ -26,6 +26,10 @@ export type ChunkRow = {
   isTable: boolean;
   lang: string;
   dates: string[];
+  /** Signature block counts read by OCR (../text/signatures.ts): handwritten signatures, empty ones, stamps. */
+  signatures?: number;
+  unsigned?: number;
+  stamps?: number;
   embedding?: ReturnType<typeof toVector>;
   createdAt: Date;
 };

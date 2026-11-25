@@ -20,7 +20,20 @@ For each page:
 - Use "## " for document titles and article/annex headings.
 - Start each page with what is at its very top — logos, boxed fields, stamps, reference/ID numbers in the corners (for example a box "ID: ١٠٤١٩٠" at the top right) — then the body, then footers ("Page 1 of 9", version lines). Never leave out boxes, stamps, seals, margin or corner text.
 - Numbers written in Arabic-Indic digits: keep them as written and add the Western digits in parentheses, e.g. ID: ١٠٤١٩٠ (104190).
-- Write handwritten text as you read it; if illegible write [illegible]. For an empty page write [blank page].`;
+- SIGNATURES — check every place where a party signs ("Signature", "Signed by", "Represented by", "التوقيع", "الإمضاء", "ويمثلها السيد", "(الإسم)", "دستخط", and the space under each party's name — on the main signature page AND in annexes) in BOTH language columns. Bilingual contracts are often signed by hand only on the Arabic side, or only on the English side. A handwritten signature is an ink scribble or stroke, often in Arabic or Urdu script; it may cross the printed line or overlap a stamp. Treat the two language columns of the same party as ONE block, and give every signature place on the page exactly one of these two lines, right after its label:
+  [Handwritten signature — <party as printed, e.g. First Party / الطرف الأول> — name: <the signer's name written by hand or printed beside it, or not present>]
+  [No signature — <party as printed>]   ← the place is empty in every column (blank line "_____", empty brackets)
+- Names of signers and representatives ("Represented By: Mr. …", "ويمثلها السيد/ …"): write the name only if you can read it. If it is empty or unreadable, leave the line as printed and put "name: not present" in the signature line — never write "illegible" for a name, and never write "not present" (or "غير موجود") as if it were handwriting.
+- Other handwriting anywhere (company names, dates, amounts, filled-in blanks, notes): [Handwritten: <exactly what is written, Arabic/Urdu in logical order>]. Write [illegible] only for words (not names) you really cannot read.
+- Stamps and seals: [Stamp: <every word and number in it — company name, city, CR number>]
+- For an empty page write [blank page].`;
+
+/** Page numbers (1-based) of a batch for which the reply had no "=== Page N ===" marker at all. */
+export function missingPages(text: string, count: number): number[] {
+  if (count === 1) return [];
+  const seen = new Set([...text.matchAll(/^\s*=+\s*Page\s+(\d+)\s*=+\s*$/gim)].map((m) => Number(m[1])));
+  return Array.from({ length: count }, (_, i) => i + 1).filter((n) => !seen.has(n));
+}
 
 /** Splits "=== Page N ===" output by page NUMBER (tolerates duplicated or missing markers). */
 export function splitPages(text: string, count: number): string[] {
@@ -39,15 +52,20 @@ export function splitPages(text: string, count: number): string[] {
   return Array.from({ length: count }, (_, i) => (pages.get(i + 1) ?? "").replace(/\[blank page\]/gi, "").trim());
 }
 
-/** OCR a small PDF (1–N pages). Returns one string per page. Throws OcrQuotaError on 429. */
-export async function ocrPdf(pdf: Uint8Array, pageCount: number): Promise<string[]> {
+/**
+ * OCR a small PDF (1–N pages). Returns one string per page, and the pages the reply skipped entirely (Gemini now
+ * and then stops after page 1 of a batch — those are re-read one by one, see ../rag/ingest.ts).
+ * Throws OcrQuotaError on 429.
+ */
+export async function ocrPdf(pdf: Uint8Array, pageCount: number): Promise<string[] & { missing?: number[] }> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new OcrQuotaError();
+  const count = pageCount > 1 ? `\nThis PDF has ${pageCount} pages: transcribe all ${pageCount}, from === Page 1 === to === Page ${pageCount} ===.` : "";
   const body = JSON.stringify({
     contents: [
       {
         role: "user",
-        parts: [{ inline_data: { mime_type: "application/pdf", data: Buffer.from(pdf).toString("base64") } }, { text: PROMPT }],
+        parts: [{ inline_data: { mime_type: "application/pdf", data: Buffer.from(pdf).toString("base64") } }, { text: PROMPT + count }],
       },
     ],
     generationConfig: {
@@ -81,6 +99,6 @@ export async function ocrPdf(pdf: Uint8Array, pageCount: number): Promise<string
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(`gemini_ocr_${res.status}: ${j?.error?.message ?? ""}`.slice(0, 300));
     const text: string = j.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
-    return splitPages(text, pageCount);
+    return Object.assign(splitPages(text, pageCount), { missing: missingPages(text, pageCount) });
   }
 }

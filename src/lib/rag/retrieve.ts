@@ -5,6 +5,7 @@ import { CHUNKS } from "../models";
 import { embedQuery } from "../ai/embed";
 import { rerank } from "../ai/rerank";
 import { annotateDigits, searchNormalize } from "../text/arabic";
+import { SIGNATURE_LINE, signatureTier } from "../text/signatures";
 import { TEXT_INDEX, VECTOR_INDEX } from "./store";
 
 // Hybrid retrieval (per question):
@@ -15,6 +16,9 @@ import { TEXT_INDEX, VECTOR_INDEX } from "./store";
 //   → Reciprocal Rank Fusion (k = 60): score = Σ weight / (60 + rank) — rank-based, so BM25 and cosine scores
 //     never need to be calibrated against each other
 //   → top 40 fused candidates → Jina cross-encoder reranker (scored against the standalone question) → top 20
+//   Signature questions ("who signed?", "من وقع؟", "کس نے دستخط کیے؟"): the signature blocks of the documents in scope
+//   are added as one more list, always reach the reranker, and go FIRST in the final 20 — handwritten-signature
+//   blocks, then stamps, then plain signature lines (documents read before signatures were marked).
 // Why hybrid: contracts are full of exact tokens (CR numbers, IBANs, product codes like "SSPET 250ml")
 // that keyword search nails and vectors blur; vectors catch paraphrases ("how long is the contract" ↔
 // "مدة العقد") that keywords miss. Sparse here = BM25 with Lucene's Arabic analyzer: learned sparse models
@@ -29,6 +33,9 @@ export type Hit = {
   section: string;
   content: string;
   isTable: boolean;
+  signatures?: number;
+  unsigned?: number;
+  stamps?: number;
   score: number;
 };
 
@@ -36,8 +43,10 @@ export const SPARSE_K = 30;
 export const DENSE_K = 30;
 export const FUSE_TOP = 40;
 export const TOP_K = 20;
+const SIGNATURE_K = 30; // signature blocks fetched for a signature question
+const SIGNATURE_FIRST = 12; // at most this many of them are moved ahead of the other sources
 const RRF_K = 60;
-const PROJECT = { docTitle: 1, documentId: 1, page: 1, pageEnd: 1, section: 1, content: 1, isTable: 1 };
+const PROJECT = { docTitle: 1, documentId: 1, page: 1, pageEnd: 1, section: 1, content: 1, isTable: 1, signatures: 1, unsigned: 1, stamps: 1 };
 
 async function bm25(query: string, userId: Types.ObjectId, docIds: Types.ObjectId[]) {
   const q = searchNormalize(query);
@@ -87,10 +96,32 @@ async function pageChunks(pages: number[], userId: Types.ObjectId, docIds: Types
   return col.find<Hit>(filter, { projection: PROJECT }).sort({ documentId: 1, page: 1, _id: 1 }).limit(30).toArray();
 }
 
-type List = { hits: Hit[]; kind: "sparse" | "dense" | "page"; weight: number };
+/**
+ * Signature blocks of the documents in scope: chunks where OCR marked a handwritten signature, an empty signature
+ * place or a stamp — and, for documents read before those markers existed, chunks with a signature line.
+ */
+async function signatureChunks(userId: Types.ObjectId, docIds: Types.ObjectId[]) {
+  const col = await collection(CHUNKS);
+  const filter: Record<string, unknown> = {
+    userId,
+    $or: [{ signatures: { $gt: 0 } }, { unsigned: { $gt: 0 } }, { stamps: { $gt: 0 } }, { content: { $regex: SIGNATURE_LINE.source, $options: "i" } }],
+  };
+  if (docIds.length) filter.documentId = { $in: docIds };
+  return col.find<Hit>(filter, { projection: PROJECT }).sort({ signatures: -1, stamps: -1, documentId: 1, page: 1 }).limit(SIGNATURE_K).toArray();
+}
 
-/** Runs sparse + dense for each query (and the page list) in parallel. */
-export async function gatherLists(opts: { queries: string[]; pages?: number[]; userId: Types.ObjectId; documentIds: Types.ObjectId[]; timings?: Record<string, number> }) {
+type List = { hits: Hit[]; kind: "sparse" | "dense" | "page" | "signature"; weight: number };
+
+/** Runs sparse + dense for each query (and the page / signature lists) in parallel. */
+export async function gatherLists(opts: {
+  queries: string[];
+  pages?: number[];
+  /** The question is about signing → also fetch the signature blocks. */
+  signatures?: boolean;
+  userId: Types.ObjectId;
+  documentIds: Types.ObjectId[];
+  timings?: Record<string, number>;
+}) {
   const t0 = Date.now();
   const timings = opts.timings ?? {};
   const jobs: Promise<List>[] = opts.queries.flatMap((q) => [
@@ -105,12 +136,31 @@ export async function gatherLists(opts: { queries: string[]; pages?: number[]; u
     // Weighted like two lists: the user named the page, so those chunks must reach the reranker.
     jobs.push(pageChunks(opts.pages, opts.userId, opts.documentIds).then((hits) => ({ hits, kind: "page" as const, weight: 2 })));
   }
+  if (opts.signatures) {
+    jobs.push(
+      signatureChunks(opts.userId, opts.documentIds)
+        .catch((e) => (console.warn("[retrieve] signature blocks failed:", e.message), [] as Hit[]))
+        .then((hits) => ({ hits, kind: "signature" as const, weight: 2 })),
+    );
+  }
   return Promise.all(jobs);
+}
+
+/** Signature blocks first (marker → stamp → signature line, each in reranker order), at most SIGNATURE_FIRST of them. */
+export function signaturesFirst(hits: Hit[]) {
+  const first = hits
+    .map((h, i) => ({ h, i, tier: signatureTier(h) }))
+    .filter((x) => x.tier < 3)
+    .sort((a, b) => a.tier - b.tier || a.i - b.i)
+    .slice(0, SIGNATURE_FIRST)
+    .map((x) => x.h);
+  const moved = new Set(first);
+  return [...first, ...hits.filter((h) => !moved.has(h))];
 }
 
 export type RetrievalResult = { hits: Hit[]; timings: Record<string, number>; mode: string; candidates: number };
 
-/** RRF over all lists → top 40 → cross-encoder → top 20. */
+/** RRF over all lists → top 40 → cross-encoder → top 20 (signature blocks first for a signature question). */
 export async function fuseAndRerank(opts: { lists: List[]; rerankQuery: string; topK?: number; timings?: Record<string, number> }): Promise<RetrievalResult> {
   const topK = opts.topK ?? TOP_K;
   const timings = opts.timings ?? {};
@@ -124,18 +174,26 @@ export async function fuseAndRerank(opts: { lists: List[]; rerankQuery: string; 
       fused.set(id, cur);
     });
   }
-  const candidates = [...fused.values()].sort((a, b) => b.score - a.score).slice(0, FUSE_TOP).map((f) => ({ ...f.hit, score: f.score }));
+  const sorted = [...fused.values()].sort((a, b) => b.score - a.score);
+  const signatureList = opts.lists.find((l) => l.kind === "signature" && l.hits.length);
+  // Signature question: every signature block reaches the reranker, even ones that fused below the top 40.
+  const keep = signatureList ? new Set(signatureList.hits.map((h) => String(h._id))) : null;
+  const candidates = sorted.filter((f, i) => i < FUSE_TOP || keep?.has(String(f.hit._id))).map((f) => ({ ...f.hit, score: f.score }));
   const has = (k: List["kind"]) => opts.lists.some((l) => l.kind === k && l.hits.length);
   if (!candidates.length) return { hits: [], timings, mode: "none", candidates: 0 };
 
   const ranked = await rerank(
     opts.rerankQuery,
     candidates.map((c) => `${c.docTitle} · p.${c.page}${c.section ? ` · ${c.section}` : ""}\n${annotateDigits(c.content)}`),
-    topK,
+    // Signature question: rank them all, so a signature block the reranker scores low is moved up, not cut.
+    signatureList ? candidates.length : topK,
   );
   timings.rerank = Date.now() - t0;
-  const hits = ranked ? ranked.map((r) => ({ ...candidates[r.index], score: r.score })) : candidates.slice(0, topK);
-  const mode = [has("sparse") && "sparse", has("dense") && "dense", has("page") && "page"].filter(Boolean).join("+") + (ranked ? "+rerank" : "+rrf");
+  let hits = ranked ? ranked.map((r) => ({ ...candidates[r.index], score: r.score })) : candidates;
+  if (signatureList) hits = signaturesFirst(hits);
+  hits = hits.slice(0, topK);
+  const mode =
+    [has("sparse") && "sparse", has("dense") && "dense", has("page") && "page", has("signature") && "signature"].filter(Boolean).join("+") + (ranked ? "+rerank" : "+rrf");
   return { hits, timings, mode, candidates: candidates.length };
 }
 

@@ -8,6 +8,7 @@ import { fuseAndRerank, gatherLists } from "@/lib/rag/retrieve";
 import { rewriteQuery } from "@/lib/rag/rewrite";
 import { searchNormalize } from "@/lib/text/arabic";
 import { detectLang, type Lang } from "@/lib/text/arabic";
+import { isSignatureQuestion } from "@/lib/text/signatures";
 
 export const maxDuration = 300; // long table answers can take the LLM ~1 min (+ automatic continuation, + fallback)
 
@@ -76,8 +77,11 @@ export const POST = handle(async (req: Request) => {
           send({ t: "delta", d: full });
         } else {
           // 2. Sparse + dense for every rewritten query (+ pages the user pointed at) → RRF top 30 → rerank top 20.
+          //    Signature questions (any language, incl. follow-ups via the rewritten question): signature blocks first.
+          const signatures = isSignatureQuestion(question, rw.standalone);
+          query.signatures = signatures || undefined;
           const raw = searchNormalize(question).toLowerCase().trim();
-          const more = await gatherLists({ queries: rw.queries.filter((q) => searchNormalize(q).toLowerCase().trim() !== raw), pages: rw.pages, ...scope, timings });
+          const more = await gatherLists({ queries: rw.queries.filter((q) => searchNormalize(q).toLowerCase().trim() !== raw), pages: rw.pages, signatures, ...scope, timings });
           const r = await fuseAndRerank({ lists: [...(await rawLists), ...more], rerankQuery: rw.standalone, timings });
           timings.retrieval = Date.now() - t0;
 
@@ -85,7 +89,7 @@ export const POST = handle(async (req: Request) => {
           // All of them go to the model (and to the browser, so every [n] it cites resolves); the UI lists the
           // ones the answer actually cites, top 3 first. chunkId → the source viewer loads the full passage on demand.
           const thread = trimHistory(turns);
-          const hits = fitSources(r.hits, { lang, history: thread, question: `${question}\n${rw.standalone}` });
+          const hits = fitSources(r.hits, { lang, history: thread, question: `${question}\n${rw.standalone}`, signatures });
           sources = hits.map((h, i) => ({
             n: i + 1,
             documentId: h.documentId,
@@ -103,7 +107,7 @@ export const POST = handle(async (req: Request) => {
             full = NOT_FOUND[lang];
             send({ t: "delta", d: full });
           } else {
-            for await (const ev of answer({ question, standalone: rw.standalone, lang, hits, history: thread })) {
+            for await (const ev of answer({ question, standalone: rw.standalone, lang, hits, history: thread, signatures })) {
               if (ev.t === "delta") send(ev);
               else if (ev.t === "verify") {
                 issues = ev.issues;

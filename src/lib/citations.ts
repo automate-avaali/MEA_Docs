@@ -4,6 +4,7 @@
 // Shared by the chat view and the source viewer (browser-only, no server imports).
 
 import { searchNormalize } from "./text/arabic";
+import { namesNotPresent } from "./text/signatures";
 
 export type Source = {
   n: number;
@@ -95,9 +96,9 @@ export function renumberPlain(answer: string, display: Map<number, number>) {
   return mapRuns(answer, display, (k) => `[${k}]`);
 }
 
-/** Passage text for display: Markdown tables → readable "cell · cell" rows, no separator lines or tags. */
+/** Passage text for display: Markdown tables → readable "cell · cell" rows, no separator lines or tags; unreadable names → "not present". */
 export const cleanSnippet = (s: string) =>
-  s
+  namesNotPresent(s)
     .split("\n")
     .filter((l) => !/^\s*\|?\s*:?-{2,}/.test(l))
     .map((l) => (/^\s*\|/.test(l) ? l.replace(/^\s*\||\|\s*$/g, "").split("|").map((c) => c.trim()).filter(Boolean).join(" · ") : l))

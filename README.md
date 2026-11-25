@@ -78,6 +78,21 @@ characters of the answer are language-checked and the request retried if the mod
 After the answer, dates (Gregorian + Hijri), numbers and `[n]` citations are verified against the sources and
 shown as "please verify" notes if they don't match.
 
+**Handwritten signatures** (`src/lib/text/signatures.ts`). Bilingual contracts are usually signed by hand on the
+Arabic side only, so:
+- OCR marks every signature place, treating both language columns of a party as one block:
+  `[Handwritten signature — First Party / الطرف الأول — name: …]`, `[No signature — …]`, `[Stamp: …]`, `[Handwritten: …]`.
+- Typed (digital) pages that have a signature label and an image or ink annotation are OCR'd too.
+- A batch reply that skips a page gets that page re-read on its own.
+- Chunks with marks are flagged (`signatures`, `unsigned`, `stamps`) and get extra EN/AR/UR search words.
+- Signature questions ("who signed?", "من وقع العقد؟", "معاہدے پر کس نے دستخط کیے؟"; follow-ups via the
+  rewritten question) add the signature blocks as a retrieval list. All of them reach the reranker, and they go
+  first in the top 20: handwritten marks, then stamps, then plain signature lines from documents read before the marks.
+- The model also gets a **signature summary** built in code: one line per document and party, with the signer and
+  stamp, both columns merged.
+- An unreadable person's name is always reported as "not present" ("الاسم غير موجود" / "نام موجود نہیں"),
+  never "illegible", in answers and in the source viewer.
+
 ## Measured on the sample contracts (`../Docs`, 4 scanned bilingual PDFs, 35 pages)
 
 - Ingestion: 2.5–3 s per scanned page end-to-end (OCR + chunk + embed), 8-page contract in ~20 s.

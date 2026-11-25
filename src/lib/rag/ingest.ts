@@ -3,20 +3,24 @@ import { PDFDocument } from "pdf-lib";
 import type { Types } from "mongoose";
 import { collection } from "../db";
 import { CHUNKS, DocumentModel, type DocumentDoc } from "../models";
-import { ocrPdf } from "../ai/gemini-ocr";
+import { OcrQuotaError, ocrPdf } from "../ai/gemini-ocr";
 import { embedManyPartial } from "../ai/embed";
 import { cleanText, detectContentLang, searchNormalize } from "../text/arabic";
 import { normalizeTables } from "../text/tables";
 import { extractDates, invalidIbans } from "../text/verify";
+import { SIGNATURE_SEARCH_TERMS, signatureStats, stripMarkers } from "../text/signatures";
 import { chunkPages, embeddingText, type PageText } from "./chunk";
 import { replacePageChunks, toVector, type ChunkRow } from "./store";
 
 export type IncomingPage = { page: number; text: string; source: "text" | "tesseract" | "docx" | "plain" };
 
 const tokens = (s: string) => new Set(searchNormalize(s).split(/[^\p{L}\p{N}]+/u).filter((t) => t.length > 2));
-/** Share of the smaller token set found in the other — two independent OCR engines on the same page. */
+/**
+ * Share of the smaller token set found in the other — two independent OCR engines on the same page.
+ * Gemini's signature/stamp marker words are left out: Tesseract never writes them.
+ */
 export function agreement(a: string, b: string) {
-  const A = tokens(a), B = tokens(b);
+  const A = tokens(stripMarkers(a)), B = tokens(b);
   if (!A.size || !B.size) return 0;
   let n = 0;
   for (const t of A) if (B.has(t)) n++;
@@ -51,6 +55,17 @@ export async function processBatch(opts: {
 
   if (opts.pdf && opts.pdfPages?.length) {
     const ocr = await ocrPdf(opts.pdf, opts.pdfPages.length);
+    // Pages the reply skipped entirely (Gemini sometimes stops after page 1) are re-read one at a time — a
+    // skipped signature page would otherwise be stored empty. A quota error here sends the whole batch to the
+    // browser's Tesseract, like any other quota error.
+    for (const n of ocr.missing ?? []) {
+      const [again] = await ocrPdf(await singlePage(opts.pdf, n - 1), 1).catch((e) => {
+        if (e instanceof OcrQuotaError) throw e;
+        console.warn(`[ingest] re-reading skipped page ${opts.pdfPages![n - 1]} failed:`, (e as Error).message);
+        return [""];
+      });
+      ocr[n - 1] = again ?? "";
+    }
     for (let i = 0; i < opts.pdfPages.length; i++) {
       const page = opts.pdfPages[i];
       let text = cleanText(ocr[i] ?? "");
@@ -78,20 +93,27 @@ export async function processBatch(opts: {
 
   texts.sort((a, b) => a.page - b.page);
   const chunks = chunkPages(texts.filter((t) => t.text));
-  const rows: ChunkRow[] = chunks.map((c) => ({
-    userId: doc.userId as Types.ObjectId,
-    documentId: doc._id,
-    docTitle: doc.title,
-    page: c.page,
-    pageEnd: c.pageEnd,
-    section: c.section,
-    content: c.content,
-    searchText: searchNormalize(`${c.section}\n${c.content}`),
-    isTable: c.isTable,
-    lang: detectContentLang(c.content),
-    dates: extractDates(c.content),
-    createdAt: new Date(),
-  }));
+  const rows: ChunkRow[] = chunks.map((c) => {
+    // Signature blocks: flagged for signature questions (retrieval puts them first) and given extra search words
+    // in Arabic / Urdu / English, so "من وقع؟" or "کس نے دستخط کیے؟" finds them by keyword too.
+    const sig = signatureStats(c.content);
+    const signatureBlock = sig.signatures + sig.unsigned + sig.stamps > 0;
+    return {
+      userId: doc.userId as Types.ObjectId,
+      documentId: doc._id,
+      docTitle: doc.title,
+      page: c.page,
+      pageEnd: c.pageEnd,
+      section: c.section,
+      content: c.content,
+      searchText: searchNormalize(`${c.section}\n${c.content}${signatureBlock ? `\n${SIGNATURE_SEARCH_TERMS}` : ""}`),
+      isTable: c.isTable,
+      lang: detectContentLang(c.content),
+      dates: extractDates(c.content),
+      ...(signatureBlock ? sig : {}),
+      createdAt: new Date(),
+    };
+  });
 
   // Embed. If the embedding service is down, chunks are still stored (keyword search works) and
   // marked pending; /api/documents/[id]/embed fills them in later with the SAME model.

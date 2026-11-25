@@ -56,7 +56,10 @@ Conversation: (none) | Latest: ID #
 // Cheap, deterministic, and keeps working when the LLM rewrite is unavailable.
 const TERMS: { match: RegExp; expand: string }[] = [
   { match: /\b(ids?|numbers?|ref(erence)?)\b|#|رقم|مرجع/i, expand: "contract number reference number customer number رقم العقد رقم المرجع رقم العميل" },
-  { match: /sign|signature|signator|توقيع|موقع|وقع/i, expand: "signature signed by representative authorized signatory التوقيع الممثل المفوض بالتوقيع" },
+  {
+    match: /sign|signature|signator|stamp|seal|توقيع|موقع|وقع|إمضاء|امضاء|ختم|دستخط|مہر/i,
+    expand: "handwritten signature signed by representative stamp التوقيع توقيع بخط اليد الممثل ختم دستخط",
+  },
   { match: /pay(ment)?|due|credit|invoice|دفع|سداد|فاتور|ائتمان/i, expand: "payment terms due date invoice credit period شروط الدفع السداد الفاتورة مدة الائتمان" },
   { match: /penalt|fine|breach|terminat|compensat|غرام|جزاء|إخلال|اخلال|فسخ|إنهاء|انهاء|تعويض/i, expand: "penalty fine breach termination compensation غرامة جزاء الإخلال فسخ إنهاء تعويض" },
   { match: /discount|slab|tier|rebate|off.?invoice|خصم|شرائح|شريحة/i, expand: "discount slab volume off-invoice rebate شرائح الخصم الخصم الكمية" },

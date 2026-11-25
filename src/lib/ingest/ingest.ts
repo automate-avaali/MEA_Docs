@@ -11,6 +11,7 @@
 import type { PDFDocument as PdfLibDoc } from "pdf-lib";
 import { itemsToText, textLayerUsable } from "./pdf-text";
 import { loadPdfjs, pdfAssetOptions } from "../pdfjs";
+import { SIGNATURE_LABEL } from "../text/signatures";
 
 export type Stage = "hashing" | "reading" | "ocr" | "tesseract" | "indexing" | "storing" | "finishing" | "done" | "failed";
 export type Progress = {
@@ -128,7 +129,30 @@ async function tesseract(): Promise<TessWorker> {
   return tessPromise;
 }
 
-async function renderPage(pdf: Awaited<ReturnType<Awaited<ReturnType<typeof pdfjs>>["getDocument"]>["promise"]>, n: number, scale: number) {
+type PdfDoc = Awaited<ReturnType<Awaited<ReturnType<typeof pdfjs>>["getDocument"]>["promise"]>;
+
+/**
+ * A typed (digital) page with a signature place and something drawn on it — an image (scanned signature or stamp)
+ * or an ink/stamp annotation. The text layer has the printed words but not the signature, so the page is OCR'd
+ * like a scan to read who signed.
+ */
+async function hasSignatureMark(page: Awaited<ReturnType<PdfDoc["getPage"]>>, text: string) {
+  if (!SIGNATURE_LABEL.test(text.normalize("NFKC"))) return false;
+  const { OPS } = await pdfjs();
+  const drawn = new Set<number>([
+    OPS.paintImageXObject,
+    OPS.paintImageXObjectRepeat,
+    OPS.paintInlineImageXObject,
+    OPS.paintInlineImageXObjectGroup,
+    OPS.paintImageMaskXObject,
+    OPS.paintImageMaskXObjectRepeat,
+    OPS.paintImageMaskXObjectGroup,
+  ]);
+  if ((await page.getOperatorList()).fnArray.some((f) => drawn.has(f))) return true;
+  return (await page.getAnnotations()).some((a) => a.subtype === "Ink" || a.subtype === "Stamp");
+}
+
+async function renderPage(pdf: PdfDoc, n: number, scale: number) {
   const page = await pdf.getPage(n);
   const viewport = page.getViewport({ scale });
   const canvas = document.createElement("canvas");
@@ -228,10 +252,15 @@ export async function ingestFile(
       let scanBatches = 0;
       const pdfLib = async () => (lib ??= await (await import("pdf-lib")).PDFDocument.load(pdfBytes!, { ignoreEncryption: true }));
 
+      // Digital pages sent to OCR only for their signature: if OCR is unavailable, their text layer is used.
+      const layerText = new Map<number, string>();
+
       const tesseractPages = async (pages: number[]) => {
         emit({ stage: "tesseract" });
+        const out: TextPage[] = pages.filter((p) => layerText.has(p)).map((p) => ({ page: p, text: layerText.get(p)!, source: "text" }));
+        pages = pages.filter((p) => !layerText.has(p));
+        if (!pages.length) return sendText(out);
         const w = await tesseract();
-        const out: TextPage[] = [];
         for (const p of pages) {
           const canvas = await renderPage(pdf, p, 2);
           out.push({ page: p, text: (await w.recognize(canvas)).data.text, source: "tesseract" });
@@ -285,8 +314,11 @@ export async function ingestFile(
         if (done.has(p)) continue;
         const page = await pdf.getPage(p);
         const text = itemsToText((await page.getTextContent()).items);
+        const usable = textLayerUsable(text);
+        const signed = usable && (await hasSignatureMark(page, text).catch(() => false));
         page.cleanup();
-        if (textLayerUsable(text)) {
+        if (signed) layerText.set(p, text);
+        if (usable && !signed) {
           textBuf.push({ page: p, text, source: "text" });
           if (textBuf.length >= TEXT_PAGES) {
             const batch = textBuf;
